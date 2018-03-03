@@ -1,88 +1,64 @@
 //Pin Definitions for ROV firmware
+//These work with standard Arduino software numbering
+//Henry Nester 3/2/2018
 
-/*****************************************************
-To set a pin as output (default is input) do:
+//DO NOT CHANGE PIN DEFINITIONS UNLESS YOU ARE AN ELECTRICAL SUBTEAM MEMBER
 
-	DEBUG_LED_DDR |= (1 << DEBUG_LED);
-	
-	You basically setting one of the bits in the Data DiRection Register (DDR) to 1
+//=====LIGHTS====================================================================================================
+//Set HIGH to turn on
 
-To set as input, no code is needed. Input is the default.
+//STATUS LIGHT (blue color)
+#define STATUS_LED 13
 
-To set a pin high, write a one to one of the bits in the correct Port register
+//HEADLIGHTS (white color)
+#define LED_CTRL A3
 
-	DEBUG_LED_PORT |= (1 << DEBUG_LED);
+//=====MOTORS====================================================================================================
+//To go forwards, set speed from 0<->255 by analogWrite (uses PWM) on MOTX_DIR1/
+//0 is stopped, 255 is full forward
+//Set MOTX_DIR2 to LOW by digitalWrite
 
-To set a pin low, write a zero to one of the bits in the correct Port register
-
-	DEBUG_LED_PORT &= ~(1 << DEBUG_LED);
-
-******************************************************/
-
-#include <avr/io.h>
-
-//DEBUG LED
-#define DEBUG_LED PB5
-#define DEBUG_LED_PORT PORTB
-#define DEBUG_LED_DDR DDRB
+//To reverse, set speed from 0<->255 by analogWrite on MOTX_DIR1
+//Now, 255 is stopped and 0 is full reverse
+//Set MOTX_DIR2 to HIGH by digitalWrite
 
 //MOTOR 1
-#define MOT1_DIR1 PD3
-#define MOT1_DIR1_PORT PORTD
-#define MOT1_DIR1_DDR DDRD
+#define MOT1_DIR1 3
 
-#define MOT1_DIR2 PC1
-#define MOT1_DIR2_PORT PORTC
-#define MOT1_DIR2_DDR DDRC
+#define MOT1_DIR2 A1
 
 //MOTOR 2
-#define MOT2_DIR1 PD5
-#define MOT2_DIR1_PORT PORTD
-#define MOT2_DIR1_DDR DDRD
+#define MOT2_DIR1 5
 
-#define MOT2_DIR2 PC2
-#define MOT2_DIR2_PORT PORTC
-#define MOT2_DIR2_DDR DDRC
+#define MOT2_DIR2 A2
 
 //MOTOR 3
-#define MOT3_DIR1 PD7
-#define MOT3_DIR1_PORT PORTD
-#define MOT3_DIR1_DDR DDRD
+#define MOT3_DIR1 7
 
-#define MOT3_DIR2 PB0
-#define MOT3_DIR2_PORT PORTB
-#define MOT3_DIR2_DDR DDRB
+#define MOT3_DIR2 6
 
 //MOTOR 4
-#define MOT4_DIR1 PB1
-#define MOT4_DIR1_PORT PORTB
-#define MOT4_DIR1_DDR DDRB
+#define MOT4_DIR1 9
 
-#define MOT4_DIR2 PD4
-#define MOT4_DIR2_PORT PORTD
-#define MOT4_DIR2_DDR DDRD
+#define MOT4_DIR2 4
+
+//=====RELAYS====================================================================================================
 
 //RELAY 1
-#define RLY1_CTRL PC0
-#define RLY1_CTRL_PORT PORTC
-#define RLY1_CTRL_DDR DDRC
+#define RLY1_CTRL A0
 
 //RELAY 2
-#define RLY2_CTRL PD7
-#define RLY2_CTRL_PORT PORTD
-#define RLY2_CTRL_DDR DDRD
+#define RLY2_CTRL 7
 
-//LED HEADLIGHTS
-#define LED_CTRL PC3
-#define LED_CTRL_PORT PORTC
-#define LED_CTRL_DDR DDRC
+//=====MISC====================================================================================================
 
 //SPEAKER
-#define SPK PB2
-#define SPK_PORT PORTB
-#define SPK_DDR DDR
+//Set high with digitalWrite to power on Connor's noisemaker circuit and emit a (annoying, square-wavey) beep
+//A specific beep pattern will activate the OBS release
+#define SPK 10
 
 //RS-485 TRANSMIT ENABLE
-#define TX_EN PD2
-#define TX_EN_PORT PORTD
-#define TX_EN_DDR DDRD
+//Set high to transmit data from ROV onboard computer (this processor) to control station over tether
+//Set low to receive data from control station (should be default state)
+//This should be handled in the Modbus library. Just reference this pin there
+#define TX_EN 2
