@@ -2,6 +2,7 @@
 //Including things we need to include
 //Look at example code included with libraries for how to use APIs
 
+#include "pindefs.h" //use quotes since file is in same directory
 #include <Wire.h> //Arduino I2C Library used by all libs below
 //for depth sensor over i2c bus
 //Pressure measured = density * gravity constant * depth + air pressure
