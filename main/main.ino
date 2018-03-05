@@ -58,6 +58,46 @@ void loop()
 }
 //Function Declarations go here 
 void fastLoop() {
+  //Msg state OK?
+  if()//!msgState)
+  {
+    //report error, set debug LED state to error, exit loop
+  }
+  //Set debug LED state to connected
+
+  //Write to thrusters the 6 16-bit #s 
+
+  // Set 4 manipulators motor speeds and direction
+ 
+  if()//oddIteration)
+  {
+    //Start depth reading
+    //oddIteration = false;
+  }
+  else
+  {
+    //oddIteration = true;
+  }
+
+  //Read out data from sensor
+
+  //Get IMU DMP readings
+
+  //Convert
+
+  //Map to 16-bit int
+
+  //Put above^ in register array
+
+  //AnalogRead voltage sensor
+  if()//current voltage < some number
+  {
+    //Stop all motors
+  }
+  //Place things in array
+
+  //slowTimer++;
+  //Report Errors
   //runs 100 times / second
 }
 void slowLoop() {
