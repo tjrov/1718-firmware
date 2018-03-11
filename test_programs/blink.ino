@@ -1,3 +1,4 @@
+//test program. Blinks blue debug light on main PCB
 void setup() {
   pinMode(13, OUTPUT);
 }
