@@ -44,9 +44,9 @@ The purpose of each element of the array is listed by index here:
         place precision)
 10. Pitch
 11. Roll
-12. Depth Reading (32-bit value needing complicated conversion at surface computer)
-13. Depth Reading part two
-//==============Slow loop data (Low priority)================
+12. Depth Reading (Use conversion methods in sensor library to get mbars and send that up for conversion to depth based on weather conditions)
+//==============Slow loop data (Low priority; you don't have to check these unless you want to)================
+13. Booleans for the two relay control pins' states, headlights state, buzzer (for OBS activation) state (use each bit as a boolean)
 14. Thruster RPM #1
 15.Thruster RPM #2
 16.Thruster RPM #3
@@ -59,6 +59,8 @@ The purpose of each element of the array is listed by index here:
 23.Thruster Temp #4
 24.Thruster Temp #5
 25.Thruster Temp #6
+26.Water temp (From depth sensor, which is in contact w/ water)
+
 //more exist. see slack post with listing in #programming dated Feb 25th
 
 
