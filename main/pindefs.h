@@ -33,9 +33,9 @@
 #define MOT2_DIR2 A2
 
 //MOTOR 3
-#define MOT3_DIR1 7
+#define MOT3_DIR1 6
 
-#define MOT3_DIR2 6
+#define MOT3_DIR2 8
 
 //MOTOR 4
 #define MOT4_DIR1 9
