@@ -87,6 +87,7 @@ class MS5803
 		
 		int32_t _temperature_actual;
 		int32_t _pressure_actual;
+		int64_t OFF, SENS; //added declarations so we can use across multiple method calls to getMeasurements()
 	
 		ms5803_addr _address; 		// Variable used to store I2C device address.
 		uint16_t coefficient[8];// Coefficients;
