@@ -1,3 +1,10 @@
+///////////////////////////////////////////////////////////////////////////////config
+#define GRAVITY_ACCELERATION 9.81415 //For Fairfax. Used vertical component from here:
+//http://www.wolframalpha.com/widgets/view.jsp?id=e856809e0d522d3153e2e7e8ec263bf2
+#define BAROMETRIC_PRESSURE 100000 //Varies greatly based on weather. 100kPa is a ballpark.
+#define WATER_DENSITY 0.99272 //chlorine reduces density of pool water
+
+
 //This is the main code for the arduino I guess. 
 //Look at example code included with libraries for how to use APIs
 ///////////////////////////////////////////////////////////////////////////////references
@@ -17,6 +24,12 @@
 //Github: Modbus-Master-Slave-for-Arduino
 #include "ModbusRtu.h"
 ///////////////////////////////////////////////////////////////////////////////variables
+//ROV states; binary values specify LED flash patterns over time
+enum rovState {
+  DISCONNECTED = 0b11111111, //no communication to surface or a communication error (solid status LED)
+  CONNECTED_DISARMED = 0b01010101, //communication works, but the user has disarmed the ROV so it won't drive around (rapid flash status LED)
+  CONNECTED_ARMED 0b00001111 //communication works, and the user has armed the ROV so it can be driven around (slow flash status LED)
+};
 //Timing-related
 unsigned long lastLoopMicros;
 byte count = 0; //count for slow loop
@@ -30,6 +43,7 @@ bool msgState; //is the msgState ok?
 double myVoltage = 0.0;
 float myPressure = 0;
 uint16_t myDepth = 0;
+float myTemperature = 0;
 ///////////////////////////////////////////////////////////////////////////////modbusRegister explain
 /*Modbus Register contents (add more as needed, these are the bare minimum to control robot functions
 The library requires an array of UNsigned 16-bit integers, but we can use them as needed
@@ -72,7 +86,6 @@ more exist. see slack post with listing in #programming dated Feb 25th */
 //slave address 1, use Arduino serial port, TX_EN pin is defined in pindefs.h file
 #define MS5803_ADDR 0x76
 #define MPU6050_ADDR 0x68
-
 Modbus rs485(1, 0, TX_EN);
 Arduino_I2C_ESC thruster1(uint8_t(0x2A), uint8_t(6));
 Arduino_I2C_ESC thruster2(uint8_t(0x2B), uint8_t(6));
@@ -87,6 +100,7 @@ MPU6050 mpu(MPU6050_ADDR); //the IMU @ 0x68
 ///////////////////////////////////////////////////////////////////////////////setup
 void setup()
 {
+  initializePins();
   rs485.begin(250000); //250kbit/s RS-485
   ms5803.begin();
   mpu.initialize();
@@ -140,8 +154,9 @@ void fastLoop() { //runs 100 times a second
   setManipulator(manipRegisters[3], MOT4_DIR1, MOT4_DIR2);
   if(oddIteration)
   {
-    myPressure = ms5803.getPressure(precision(0x04)); //returns pascals, precise to 1024???
-    myDepth = 9.80665 * myPressure; //Assumption that water density is 1 g/cm^3 
+    myPressure = ms5803.getPressure(ADC_1024); //returns Pascals (N/m^2), precise to 0.4mbar or about 4mm depth change
+    myDepth -= BAROMETRIC_PRESSURE; //subtract air pressure
+    myDepth = myPressure / WATER_DENSITY / GRAVITY_ACCELERATION; //Assumption that water density is 1 g/cm^3 
     //myDepth is in meters
     oddIteration = false;
   }
@@ -176,7 +191,8 @@ void slowLoop() { //runs 10 times / second
 
   //get thruster temperatures
 
-  //get water temperatures (slows down code while waiting for measurement; forget about it for now)
+  //get water temperatures
+  myTemperature = ms5803.getTemperature(ADC_1024);
   
   //update status LED
 }
@@ -199,3 +215,21 @@ void setManipulator(int8_t val, byte dir1, byte dir2) {
   }
 }
 
+void initializePins() {
+  //default to LOW state, don't need to digitalWrite LOW
+  pinMode(STATUS_LED, OUTPUT);
+  pinMode(TX_EN, OUTPUT);
+  pinMode(MOT1_DIR1, OUTPUT);
+  pinMode(MOT1_DIR2 OUTPUT);
+  pinMode(MOT2_DIR1, OUTPUT);
+  pinMode(MOT2_DIR2 OUTPUT);
+  pinMode(MOT3_DIR1, OUTPUT);
+  pinMode(MOT3_DIR2 OUTPUT);
+  pinMode(MOT4_DIR1, OUTPUT);
+  pinMode(MOT4_DIR2, OUTPUT);
+  pinMode(RLY1_CTRL, OUTPUT);
+  pinMode(RLY2_CTRL, OUTPUT);
+  pinMode(LED_CTRL, OUTPUT);
+  pinMode(SPK, OUTPUT);
+}
+  
