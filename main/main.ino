@@ -1,30 +1,33 @@
 //This is the main code for the arduino I guess. 
-//Including things we need to include
 //Look at example code included with libraries for how to use APIs
-
+///////////////////////////////////////////////////////////////////////////////references
 #include "pindefs.h" //use quotes since file is in same directory
 #include <Wire.h> //Arduino I2C Library used by all libs below
 //for depth sensor over i2c bus
 //Pressure measured = density * gravity constant * depth + air pressure
-#include <SparkFun_MS5803_I2C.h> //Henry's Pin Libraries??
+#include "SparkFun_MS5803_I2C.h"
 //for orientation sensor using MPU-6050 chip over i2c bus
-#include <I2Cdev.h>
-#include <MPU6050_6Axis_MotionApps20.h>
+#include "I2Cdev.h"
+#include "MPU6050_6Axis_MotionApps20.h"
 //for ESC (BlueRobotics Basic ESC) control over the i2c bus
-#include <Arduino_I2C_ESC.h>
+#include "Arduino_I2C_ESC.h"
 //For ModBus RTU
 //Read about that here:
 //https://en.wikipedia.org/wiki/Modbus
 //Github: Modbus-Master-Slave-for-Arduino
-#include <ModbusRtu.h>
-
-//Defining of Variables
+#include "ModbusRtu.h"
+///////////////////////////////////////////////////////////////////////////////variables
 //Timing-related
 unsigned long lastLoopMicros;
-byte count = 0;
+byte count = 0; //count for slow loop
+bool oddIteration; //is the iteration odd
 //Communication-related
-byte numRegisters = 10; //some number
+const byte numRegisters = 10; //some number
 uint16_t modbusRegisters[numRegisters] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+bool msgState; //is the msgState ok?
+//Hardware-related
+double myVoltage = 0.0;
+///////////////////////////////////////////////////////////////////////////////modbusRegister explain
 /*Modbus Register contents (add more as needed, these are the bare minimum to control robot functions
 The library requires an array of UNsigned 16-bit integers, but we can use them as needed
 The purpose of each element of the array is listed by index here:
@@ -61,21 +64,20 @@ The purpose of each element of the array is listed by index here:
 25.Thruster Temp #6
 26.Water temp (From depth sensor, which is in contact w/ water)
 
-//more exist. see slack post with listing in #programming dated Feb 25th
-
-
-//Object instantiations
+more exist. see slack post with listing in #programming dated Feb 25th */
+///////////////////////////////////////////////////////////////////////////////Object instantiations
 //slave address 1, use Arduino serial port, TX_EN pin is defined in pindefs.h file
 Modbus rs485(1, 0, TX_EN);
 
 //Required setup and loop functions
 //Runs at power on
+///////////////////////////////////////////////////////////////////////////////setup
 void setup()
 {
   rs485.begin(250000); //250kbit/s RS-485
-  Wire.begin(400000); //400 kHz i2c
+  Wire.begin(byte(400000)); //400 kHz i2c
 }
-//Runs after setup() in an infinite loop
+///////////////////////////////////////////////////////////////////////////////loop
 void loop()
 {
   if(count == 0) {
@@ -94,27 +96,27 @@ void loop()
   //as often as possible, update Modbus registers with serial port data
   rs485.poll(modbusRegisters, numRegisters);
 }
-//Function Declarations go here 
+///////////////////////////////////////////////////////////////////////////////Function Declarations
 void fastLoop() {
   //Msg state OK?
-  if()//!msgState)
+  if(!msgState)
   {
-    //report error, set debug LED state to error, exit loop
+    //report error
+    digitalWrite(STATUS_LED, HIGH); //Debug LED to error
+    return; //break
   }
-  //Set debug LED state to connected
-
+  digitalWrite(STATUS_LED, LOW);//Set debug LED state to connected
   //Write to thrusters the 6 16-bit #s 
-
+  
   // Set 4 manipulators motor speeds and direction
- 
-  if()//oddIteration)
+  if(oddIteration)
   {
     //Start depth reading
-    //oddIteration = false;
+    oddIteration = false;
   }
   else
   {
-    //oddIteration = true;
+    oddIteration = true;
   }
 
   //Read out data from sensor
@@ -128,7 +130,7 @@ void fastLoop() {
   //Put above^ in register array
 
   //AnalogRead voltage sensor
-  if()//current voltage < some number
+  if(myVoltage < 2.5)//If voltage is lower than 2.5V
   {
     //Stop all motors
   }
@@ -140,6 +142,9 @@ void fastLoop() {
 }
 void slowLoop() {
   //runs 10 times / second
+}
+void writeThruster(int16_t val){
+  
 }
 //function takes a signed 8-bit integer for the speed (range -128<->127)
 //negative values go reverse, positive forwards
