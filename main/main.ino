@@ -5,11 +5,7 @@
 #include <Wire.h> //Arduino I2C Library used by all libs below
 //for depth sensor over i2c bus
 //Pressure measured = density * gravity constant * depth + air pressure
-<<<<<<< HEAD
-#include <SparkFun_MS5803_I2C.h>
-=======
 #include "SparkFun_MS5803_I2C.h"
->>>>>>> kwu-branch
 //for orientation sensor using MPU-6050 chip over i2c bus
 #include "I2Cdev.h"
 #include "MPU6050_6Axis_MotionApps20.h"
@@ -28,9 +24,12 @@ bool oddIteration; //is the iteration odd
 //Communication-related
 const byte numRegisters = 10; //some number
 uint16_t modbusRegisters[numRegisters] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+uint8_t manipRegisters[4] = {0, 0, 0, 0}; //registers in uint8_t for manipulators
 bool msgState; //is the msgState ok?
 //Hardware-related
 double myVoltage = 0.0;
+float myPressure = 0;
+uint16_t myDepth = 0;
 ///////////////////////////////////////////////////////////////////////////////modbusRegister explain
 /*Modbus Register contents (add more as needed, these are the bare minimum to control robot functions
 The library requires an array of UNsigned 16-bit integers, but we can use them as needed
@@ -72,7 +71,7 @@ more exist. see slack post with listing in #programming dated Feb 25th */
 ///////////////////////////////////////////////////////////////////////////////Object instantiations
 //slave address 1, use Arduino serial port, TX_EN pin is defined in pindefs.h file
 Modbus rs485(1, 0, TX_EN);
-
+Arduino_I2C_ESC thruster(uint8_t(11), uint8_t(6));
 //Required setup and loop functions
 //Runs at power on
 ///////////////////////////////////////////////////////////////////////////////setup
@@ -101,21 +100,35 @@ void loop()
   rs485.poll(modbusRegisters, numRegisters);
 }
 ///////////////////////////////////////////////////////////////////////////////Function Declarations
-void fastLoop() {
-  //Msg state OK?
+void fastLoop() { //runs 100 times a second
+  //Check if msg state is ok
   if(!msgState)
   {
-    //report error
+    Serial.println("sum ting wong");//report error
     digitalWrite(STATUS_LED, HIGH); //Debug LED to error
     return; //break
   }
   digitalWrite(STATUS_LED, LOW);//Set debug LED state to connected
   //Write to thrusters the 6 16-bit #s 
-  
+  for(int a = 0; a < 6; a++)
+  {
+    thruster.set(modbusRegisters[a]);//yo i don't know if this is right???
+  }
+  //converting to uint8_ts
+  manipRegisters[0] = (uint8_t)((modbusRegisters[6] & 0xFF00) >> 8); 
+  manipRegisters[1] = (uint8_t)((modbusRegisters[6] & 0x00FF);
+  manipRegisters[2] = (uint8_t)((modbusRegisters[7] & 0xFF00) >> 8);
+  manipRegisters[3] = (uint8_t)((modbusRegisters[7] & 0x00FF); 
   // Set 4 manipulators motor speeds and direction
+  setManipulator(manipRegisters[0], MOT1_DIR1, MOT1_DIR2);
+  setManipulator(manipRegisters[1], MOT2_DIR1, MOT2_DIR2);
+  setManipulator(manipRegisters[2], MOT3_DIR1, MOT3_DIR2);
+  setManipulator(manipRegisters[3], MOT4_DIR1, MOT4_DIR2);
   if(oddIteration)
   {
-    //Start depth reading
+    myPressure = 102; //getPressure();
+    myDepth = 9.80665 * myPressure; //Assumption that water density is 1 g/cm^3 
+    //myDepth is in meters
     oddIteration = false;
   }
   else
@@ -124,7 +137,7 @@ void fastLoop() {
   }
 
   //Read out data from sensor
-
+  
   //Get IMU DMP readings
 
   //Convert
@@ -140,14 +153,10 @@ void fastLoop() {
   }
   //Place things in array
 
-  //slowTimer++;
+  count++; //iterate for the slow loop
   //Report Errors
-  //runs 100 times / second
 }
-void slowLoop() {
-  //runs 10 times / second
-}
-void writeThruster(int16_t val){
+void slowLoop() { //runs 10 times / second
   
 }
 //function takes a signed 8-bit integer for the speed (range -128<->127)
@@ -166,3 +175,4 @@ void setManipulator(int8_t val, byte dir1, byte dir2) {
     digitalWrite(dir2, LOW);
   }
 }
+
