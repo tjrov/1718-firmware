@@ -6,7 +6,7 @@
 #include <Wire.h> //Arduino I2C Library used by all libs below
 //for depth sensor over i2c bus
 //Pressure measured = density * gravity constant * depth + air pressure
-#include <SparkFun_MS5803_I2C.h> //Henry's Pin Libraries??
+#include <SparkFun_MS5803_I2C.h>
 //for orientation sensor using MPU-6050 chip over i2c bus
 #include <I2Cdev.h>
 #include <MPU6050_6Axis_MotionApps20.h>
