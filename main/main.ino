@@ -100,6 +100,7 @@ MPU6050 mpu(MPU6050_ADDR); //the IMU @ 0x68
 ///////////////////////////////////////////////////////////////////////////////setup
 void setup()
 {
+  rovState = DISCONNECTED;
   initializePins();
   rs485.begin(250000); //250kbit/s RS-485
   ms5803.begin();
@@ -118,7 +119,7 @@ void loop()
     lastLoopMicros = micros();
     fastLoop();
     count++;
-    if(count >= 10) {
+    if(count >= 8) {
       count = 0;
     }
   }
@@ -131,10 +132,11 @@ void fastLoop() { //runs 100 times a second
   if(!msgState)
   {
     Serial.println("sum ting wong");//report error
-    digitalWrite(STATUS_LED, HIGH); //Debug LED to error
+    //The Serial port is already used by Modbus. Maybe a register for errors?
+    rovState = DISCONNECTED;
+    
     return; //break
   }
-  digitalWrite(STATUS_LED, LOW);//Set debug LED state to connected
   //Write to thrusters the 6 16-bit #s 
   thruster1.set(modbusRegisters[0]);//yo i don't know if this is right???
   thruster2.set(modbusRegisters[1]);
@@ -181,7 +183,6 @@ void fastLoop() { //runs 100 times a second
   }
   //Place things in array
 
-  count++; //iterate for the slow loop
   //Report Errors
 }
 void slowLoop() { //runs 10 times / second
@@ -195,6 +196,7 @@ void slowLoop() { //runs 10 times / second
   myTemperature = ms5803.getTemperature(ADC_1024);
   
   //update status LED
+  digitalWrite(STATUS_LED, rovState & (1 << count)); //set LED state to the nth bit of the ROV's state. The LED thus blinks differently in different states
 }
 /*******************************************************************************/
 //function takes a signed 8-bit integer for the speed (range -128<->127)
