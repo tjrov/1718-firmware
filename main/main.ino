@@ -70,6 +70,9 @@ The purpose of each element of the array is listed by index here:
 more exist. see slack post with listing in #programming dated Feb 25th */
 ///////////////////////////////////////////////////////////////////////////////Object instantiations
 //slave address 1, use Arduino serial port, TX_EN pin is defined in pindefs.h file
+#define MS5803_ADDR 0x76
+#define MPU6050_ADDR 0x68
+
 Modbus rs485(1, 0, TX_EN);
 Arduino_I2C_ESC thruster1(uint8_t(0x2A), uint8_t(6));
 Arduino_I2C_ESC thruster2(uint8_t(0x2B), uint8_t(6));
@@ -77,8 +80,8 @@ Arduino_I2C_ESC thruster3(uint8_t(0x2C), uint8_t(6));
 Arduino_I2C_ESC thruster4(uint8_t(0x2D), uint8_t(6));
 Arduino_I2C_ESC thruster5(uint8_t(0x2E), uint8_t(6));
 Arduino_I2C_ESC thruster6(uint8_t(0x2F), uint8_t(6));
-MS5803 ms5803(ms5803_addr(0x76)); //0x76 
-MPU6050 mpu(0x68); //the IMU
+MS5803 ms5803(MS5803_ADDR); //0x76 
+MPU6050 mpu(MPU6050_ADDR); //the IMU @ 0x68
 //Required setup and loop functions
 //Runs at power on
 ///////////////////////////////////////////////////////////////////////////////setup
@@ -173,7 +176,9 @@ void slowLoop() { //runs 10 times / second
 
   //get thruster temperatures
 
-  //get water temperatures
+  //get water temperatures (slows down code while waiting for measurement; forget about it for now)
+  
+  //update status LED
 }
 /*******************************************************************************/
 //function takes a signed 8-bit integer for the speed (range -128<->127)
