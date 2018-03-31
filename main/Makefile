@@ -6,7 +6,7 @@ ARDUINO_DIR  = /usr/share/arduino
 ARDUINO_LIBS = Wire SparkFun_MS5803_I2C I2Cdev MPU6050_6Axis_MotionApps20 Arduino_I2C_ESC ModbusRtu
 
 #find non-standard libraries in 1718-firmware/libraries
-USER_LIB_DIR = /home/pi/1718-firmware/libraries
+USER_LIB_PATH = /home/pi/1718-firmware/libraries
 
 #port to which RS-485 transceiver is attached
 ARDUINO_PORT = /dev/ttyUSB0
