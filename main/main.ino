@@ -72,12 +72,16 @@ more exist. see slack post with listing in #programming dated Feb 25th */
 //slave address 1, use Arduino serial port, TX_EN pin is defined in pindefs.h file
 Modbus rs485(1, 0, TX_EN);
 Arduino_I2C_ESC thruster(uint8_t(11), uint8_t(6));
+MS5803 ms5803(ms5803_addr(0x77)); //High I guess
+MPU6050 mpu(); 
 //Required setup and loop functions
 //Runs at power on
 ///////////////////////////////////////////////////////////////////////////////setup
 void setup()
 {
   rs485.begin(250000); //250kbit/s RS-485
+  ms5803.begin();
+  mpu.initialize();
   Wire.begin(byte(400000)); //400 kHz i2c
 }
 ///////////////////////////////////////////////////////////////////////////////loop
@@ -116,9 +120,9 @@ void fastLoop() { //runs 100 times a second
   }
   //converting to uint8_ts
   manipRegisters[0] = (uint8_t)((modbusRegisters[6] & 0xFF00) >> 8); 
-  manipRegisters[1] = (uint8_t)((modbusRegisters[6] & 0x00FF);
+  manipRegisters[1] = (uint8_t)(modbusRegisters[6] & 0x00FF);
   manipRegisters[2] = (uint8_t)((modbusRegisters[7] & 0xFF00) >> 8);
-  manipRegisters[3] = (uint8_t)((modbusRegisters[7] & 0x00FF); 
+  manipRegisters[3] = (uint8_t)(modbusRegisters[7] & 0x00FF); 
   // Set 4 manipulators motor speeds and direction
   setManipulator(manipRegisters[0], MOT1_DIR1, MOT1_DIR2);
   setManipulator(manipRegisters[1], MOT2_DIR1, MOT2_DIR2);
@@ -126,7 +130,7 @@ void fastLoop() { //runs 100 times a second
   setManipulator(manipRegisters[3], MOT4_DIR1, MOT4_DIR2);
   if(oddIteration)
   {
-    myPressure = 102; //getPressure();
+    myPressure = ms5803.getPressure(precision(0x04)); //returns pascals, precise to 1024???
     myDepth = 9.80665 * myPressure; //Assumption that water density is 1 g/cm^3 
     //myDepth is in meters
     oddIteration = false;
@@ -139,10 +143,10 @@ void fastLoop() { //runs 100 times a second
   //Read out data from sensor
   
   //Get IMU DMP readings
-
+  
   //Convert
 
-  //Map to 16-bit int
+  //Map to 16-bit intI
 
   //Put above^ in register array
 
