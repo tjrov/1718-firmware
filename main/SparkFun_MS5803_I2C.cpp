@@ -62,7 +62,7 @@ uint8_t MS5803::begin(void)
 float MS5803::getTemperature(temperature_units units, precision _precision)
 // Return a temperature reading in either F or C.
 {
-	getMeasurements(_precision);
+	getMeasurements(_precision, true); //get both temperature & pressure
 	float temperature_reported;
 	// If Fahrenheit is selected return the temperature converted to F
 	if (units == FAHRENHEIT)
@@ -83,7 +83,7 @@ float MS5803::getTemperature(temperature_units units, precision _precision)
 float MS5803::getPressure(precision _precision)
 // Return a pressure reading units Pa.
 {
-	getMeasurements(_precision);
+	getMeasurements(_precision, false); //don't get temperature also
 	float pressure_reported;
 	pressure_reported = _pressure_actual;
 	pressure_reported = pressure_reported / 10.0f;
