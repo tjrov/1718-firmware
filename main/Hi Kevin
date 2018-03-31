@@ -1,1 +1,2 @@
 I have everything setup with the real hardware. Message me on Slack when you want to try out the code on the real hardware instead of just a regular Arduino board.
+Also u probably know this but you need the .cpp files in addition to the .h ones
