@@ -22,8 +22,8 @@ unsigned long lastLoopMicros;
 byte count = 0; //count for slow loop
 bool oddIteration; //is the iteration odd
 //Communication-related
-const byte numRegisters = 10; //some number
-uint16_t modbusRegisters[numRegisters] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+const byte numRegisters = 26; //some number
+uint16_t modbusRegisters[numRegisters] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 uint8_t manipRegisters[4] = {0, 0, 0, 0}; //registers in uint8_t for manipulators
 bool msgState; //is the msgState ok?
 //Hardware-related
@@ -71,9 +71,14 @@ more exist. see slack post with listing in #programming dated Feb 25th */
 ///////////////////////////////////////////////////////////////////////////////Object instantiations
 //slave address 1, use Arduino serial port, TX_EN pin is defined in pindefs.h file
 Modbus rs485(1, 0, TX_EN);
-Arduino_I2C_ESC thruster(uint8_t(11), uint8_t(6));
-MS5803 ms5803(ms5803_addr(0x77)); //High I guess
-MPU6050 mpu(); 
+Arduino_I2C_ESC thruster1(uint8_t(0x2A), uint8_t(6));
+Arduino_I2C_ESC thruster2(uint8_t(0x2B), uint8_t(6));
+Arduino_I2C_ESC thruster3(uint8_t(0x2C), uint8_t(6));
+Arduino_I2C_ESC thruster4(uint8_t(0x2D), uint8_t(6));
+Arduino_I2C_ESC thruster5(uint8_t(0x2E), uint8_t(6));
+Arduino_I2C_ESC thruster6(uint8_t(0x2F), uint8_t(6));
+MS5803 ms5803(ms5803_addr(0x76)); //0x76 
+MPU6050 mpu(0x68); //the IMU
 //Required setup and loop functions
 //Runs at power on
 ///////////////////////////////////////////////////////////////////////////////setup
@@ -114,10 +119,12 @@ void fastLoop() { //runs 100 times a second
   }
   digitalWrite(STATUS_LED, LOW);//Set debug LED state to connected
   //Write to thrusters the 6 16-bit #s 
-  for(int a = 0; a < 6; a++)
-  {
-    thruster.set(modbusRegisters[a]);//yo i don't know if this is right???
-  }
+  thruster1.set(modbusRegisters[0]);//yo i don't know if this is right???
+  thruster2.set(modbusRegisters[1]);
+  thruster3.set(modbusRegisters[2]);
+  thruster4.set(modbusRegisters[3]);
+  thruster5.set(modbusRegisters[4]);
+  thruster6.set(modbusRegisters[5]);
   //converting to uint8_ts
   manipRegisters[0] = (uint8_t)((modbusRegisters[6] & 0xFF00) >> 8); 
   manipRegisters[1] = (uint8_t)(modbusRegisters[6] & 0x00FF);
@@ -142,18 +149,17 @@ void fastLoop() { //runs 100 times a second
 
   //Read out data from sensor
   
-  //Get IMU DMP readings
-  
-  //Convert
-
-  //Map to 16-bit intI
-
-  //Put above^ in register array
-
+  //Get IMU DMP readings aka MPU6050 readings, convert, map to 16-bit int, put in register array
+  modbusRegisters[9] = mpu.getRotationZ(); //Yaw is Z
+  modbusRegisters[10] = mpu.getRotationY(); //Pitch is Y
+  modbusRegisters[11] = mpu.getRotationX(); //Roll is X
   //AnalogRead voltage sensor
   if(myVoltage < 2.5)//If voltage is lower than 2.5V
   {
-    //Stop all motors
+    setManipulator(0, MOT1_DIR1, MOT1_DIR2);
+    setManipulator(0, MOT2_DIR1, MOT2_DIR2);
+    setManipulator(0, MOT3_DIR1, MOT3_DIR2);
+    setManipulator(0, MOT4_DIR1, MOT4_DIR2);//Stop all motors
   }
   //Place things in array
 
@@ -161,11 +167,19 @@ void fastLoop() { //runs 100 times a second
   //Report Errors
 }
 void slowLoop() { //runs 10 times / second
+  //do things with the booleans 
   
+  //get thruster rpm
+
+  //get thruster temperatures
+
+  //get water temperatures
 }
+/*******************************************************************************/
 //function takes a signed 8-bit integer for the speed (range -128<->127)
 //negative values go reverse, positive forwards
 //other two params are the pins to use (use pindefs.h constants please)
+/*******************************************************************************/
 void setManipulator(int8_t val, byte dir1, byte dir2) {
   if(val > 0) {
     analogWrite(dir1, (val*2));
