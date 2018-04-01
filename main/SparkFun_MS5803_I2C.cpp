@@ -94,16 +94,13 @@ void MS5803::getMeasurements(precision _precision, boolean temperatureAlso)
 
 {
 	//Retrieve ADC result
+	int32_t pressure_raw = getADCconversion(PRESSURE, _precision);
+	int32_t pressure_calc;
 	if(temperatureAlso) {
 		int32_t temperature_raw = getADCconversion(TEMPERATURE, _precision);
 		//getting water temp is slow and not necessary to do every time
-	}
-	int32_t pressure_raw = getADCconversion(PRESSURE, _precision);
-
-	if(temperatureAlso) {
 		//Create Variables for calculations
 		int32_t temp_calc;
-		int32_t pressure_calc;
 
 		int32_t dT;
 
@@ -147,13 +144,13 @@ void MS5803::getMeasurements(precision _precision, boolean temperatureAlso)
 		temp_calc = temp_calc - T2;
 		OFF = OFF - OFF2;
 		SENS = SENS - SENS2;
+
+		_temperature_actual = temp_calc;
 	}
 	// Now lets calculate the pressure
 
 
 	pressure_calc = (((SENS * pressure_raw) / 2097152) - OFF) / 32768;
-
-	_temperature_actual = temp_calc;
 	_pressure_actual = pressure_calc; // 10;// pressure_calc;
 }
 

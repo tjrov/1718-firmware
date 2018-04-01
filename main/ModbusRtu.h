@@ -40,7 +40,7 @@
 #include <inttypes.h>
 #include "Arduino.h"
 #include "Print.h"
-#include <SoftwareSerial.h>
+//#include <SoftwareSerial.h>
 
 /**
 * @struct modbus_t
@@ -155,7 +155,7 @@ class Modbus
 {
 private:
 	HardwareSerial * port; //!< Pointer to Serial class object
-	SoftwareSerial *softPort; //!< Pointer to SoftwareSerial class object
+	//SoftwareSerial *softPort; //!< Pointer to SoftwareSerial class object
 	uint8_t u8id; //!< 0=master, 1..247=slave number
 	uint8_t u8serno; //!< serial port: 0-Serial, 1..3-Serial1..Serial3; 4: use software serial
 	uint8_t u8txenpin; //!< flow control pin: 0=USB or RS-232 mode, >0=RS-485 mode
@@ -193,7 +193,7 @@ public:
 	Modbus(uint8_t u8id, uint8_t u8serno, uint8_t u8txenpin);
 	Modbus(uint8_t u8id);
 	void begin(long u32speed);
-	void begin(SoftwareSerial *sPort, long u32speed);
+	//void begin(SoftwareSerial *sPort, long u32speed);
 	void begin(long u32speed, uint8_t u8config);
 	void begin();
 	void setTimeOut(uint16_t u16timeout); //!<write communication watch-dog timer
@@ -341,7 +341,7 @@ void Modbus::begin(long u32speed)
 * @param speed   baud rate, in standard increments (300..115200)
 * @ingroup setup
 */
-void Modbus::begin(SoftwareSerial *sPort, long u32speed)
+/*void Modbus::begin(SoftwareSerial *sPort, long u32speed)
 {
 
 	softPort = sPort;
@@ -358,7 +358,7 @@ void Modbus::begin(SoftwareSerial *sPort, long u32speed)
 	while (softPort->read() >= 0);
 	u8lastRec = u8BufferSize = 0;
 	u16InCnt = u16OutCnt = u16errCnt = 0;
-}
+}*/
 
 /**
 * @brief
@@ -659,8 +659,8 @@ int8_t Modbus::poll()
 	uint8_t u8current;
 	if (u8serno<4)
 		u8current = port->available();
-	else
-		u8current = softPort->available();
+	//else
+		//u8current = softPort->available();
 
 	if (millis() > u32timeOut)
 	{
@@ -749,8 +749,8 @@ int8_t Modbus::poll(uint16_t *regs, uint8_t u8size)
 	// check if there is any incoming frame
 	if (u8serno<4)
 		u8current = port->available();
-	else
-		u8current = softPort->available();
+	//else
+		//u8current = softPort->available();
 
 	if (u8current == 0) return 0;
 
@@ -856,14 +856,14 @@ int8_t Modbus::getRxBuffer()
 
 			if (u8BufferSize >= MAX_BUFFER) bBuffOverflow = true;
 		}
-	else
-		while (softPort->available())
+	//else
+		/*while (softPort->available())
 		{
 			au8Buffer[u8BufferSize] = softPort->read();
 			u8BufferSize++;
 
 			if (u8BufferSize >= MAX_BUFFER) bBuffOverflow = true;
-		}
+		}*/
 	u16InCnt++;
 
 	if (bBuffOverflow)
@@ -888,7 +888,7 @@ int8_t Modbus::getRxBuffer()
 */
 void Modbus::sendTxBuffer()
 {
-	uint8_t i = 0;
+	//uint8_t i = 0;
 
 	// append CRC to message
 	uint16_t u16crc = calcCRC(u8BufferSize);
@@ -930,8 +930,8 @@ void Modbus::sendTxBuffer()
 	// transfer buffer to serial line
 	if (u8serno<4)
 		port->write(au8Buffer, u8BufferSize);
-	else
-		softPort->write(au8Buffer, u8BufferSize);
+	//else
+		//softPort->write(au8Buffer, u8BufferSize);
 
 	// keep RS485 transceiver in transmit mode as long as sending
 	if (u8txenpin > 1)
@@ -966,8 +966,8 @@ void Modbus::sendTxBuffer()
 	}
 	if (u8serno<4)
 		while (port->read() >= 0);
-	else
-		while (softPort->read() >= 0);
+	//else
+		//while (softPort->read() >= 0);
 
 	u8BufferSize = 0;
 
@@ -1149,8 +1149,8 @@ void Modbus::buildException(uint8_t u8exception)
 */
 void Modbus::get_FC1()
 {
-	uint8_t u8byte, i;
-	u8byte = 0;
+	//uint8_t u8byte, i;
+	//u8byte = 0;
 
 	//  for (i=0; i< au8Buffer[ 2 ] /2; i++) {
 	//    au16regs[ i ] = word(
@@ -1390,7 +1390,7 @@ int8_t Modbus::process_FC15(uint16_t *regs, uint8_t u8size)
 */
 int8_t Modbus::process_FC16(uint16_t *regs, uint8_t u8size)
 {
-	uint8_t u8func = au8Buffer[FUNC];  // get the original FUNC code
+	//uint8_t u8func = au8Buffer[FUNC];  // get the original FUNC code
 	uint8_t u8StartAdd = au8Buffer[ADD_HI] << 8 | au8Buffer[ADD_LO];
 	uint8_t u8regsno = au8Buffer[NB_HI] << 8 | au8Buffer[NB_LO];
 	uint8_t u8CopyBufferSize;

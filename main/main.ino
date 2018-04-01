@@ -24,26 +24,39 @@
 //Github: Modbus-Master-Slave-for-Arduino
 #include "ModbusRtu.h"
 ///////////////////////////////////////////////////////////////////////////////variables
-//ROV states; binary values specify LED flash patterns over time
-enum rovState {
-  DISCONNECTED = 0b11111111, //no communication to surface or a communication error (solid status LED)
-  CONNECTED_DISARMED = 0b01010101, //communication works, but the user has disarmed the ROV so it won't drive around (rapid flash status LED)
-  CONNECTED_ARMED 0b00001111 //communication works, and the user has armed the ROV so it can be driven around (slow flash status LED)
-};
+//ROV states for Status & Control Register; binary values specify LED flash patterns over time
+#define STATE_BOOTLOADER 0b00000000 //getting ready to go to bootloader
+#define STATE_DISCONNECTED 0b00000001 //no communication to surface or a communication error (pulse status LED once in a while)
+#define STATE_CONNECTED_DISARMED 0b11111111 //communication works, but the user has disarmed the ROV so it won't drive around (solid status LED)
+#define STATE_CONNECTED_ARMED 0b00001111 //communication works, and the user has armed the ROV so it can be driven around (slow flash status LED)
+uint8_t rovState = STATE_DISCONNECTED;
+//ROV errors for Status & Control Register
+#define ERROR_NONE 0
+//others as needed
+uint8_t rovError = ERROR_NONE;
+
 //Timing-related
 unsigned long lastLoopMicros;
 byte count = 0; //count for slow loop
 bool oddIteration; //is the iteration odd
 //Communication-related
-const byte numRegisters = 26; //some number
-uint16_t modbusRegisters[numRegisters] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-uint8_t manipRegisters[4] = {0, 0, 0, 0}; //registers in uint8_t for manipulators
+const byte numRegisters = 27; //some number
+uint16_t modbusRegisters[numRegisters] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+int8_t manipRegisters[4] = {0, 0, 0, 0}; //registers in uint8_t for manipulators
 bool msgState; //is the msgState ok?
 //Hardware-related
 double myVoltage = 0.0;
 float myPressure = 0;
 uint16_t myDepth = 0;
 float myTemperature = 0;
+//MPU variables
+uint16_t mpuPacketSize;
+uint16_t mpuFifoCount;
+uint8_t mpuFifoBuffer[64];
+uint8_t mpuIntStatus;
+Quaternion q;
+VectorFloat gravity;
+float ypr[3];
 ///////////////////////////////////////////////////////////////////////////////modbusRegister explain
 /*Modbus Register contents (add more as needed, these are the bare minimum to control robot functions
 The library requires an array of UNsigned 16-bit integers, but we can use them as needed
@@ -80,8 +93,10 @@ The purpose of each element of the array is listed by index here:
 24.Thruster Temp #5
 25.Thruster Temp #6
 26.Water temp (From depth sensor, which is in contact w/ water)
-
-more exist. see slack post with listing in #programming dated Feb 25th */
+27.ROV Status & Control Register. High byte holds error codes (can't communicate with an ESC, that sort of thing)
+				Low byte can be changed to arm/disarm ROV, reset board, enter bootloader, other stuff
+28.Modbus Status Register. High byte holds getErrCount(), Low byte holds getLastError().
+*/
 ///////////////////////////////////////////////////////////////////////////////Object instantiations
 //slave address 1, use Arduino serial port, TX_EN pin is defined in pindefs.h file
 #define MS5803_ADDR 0x76
@@ -93,51 +108,38 @@ Arduino_I2C_ESC thruster3(uint8_t(0x2C), uint8_t(6));
 Arduino_I2C_ESC thruster4(uint8_t(0x2D), uint8_t(6));
 Arduino_I2C_ESC thruster5(uint8_t(0x2E), uint8_t(6));
 Arduino_I2C_ESC thruster6(uint8_t(0x2F), uint8_t(6));
-MS5803 ms5803(MS5803_ADDR); //0x76 
+MS5803 ms5803(ms5803_addr(MS5803_ADDR)); //0x76 
 MPU6050 mpu(MPU6050_ADDR); //the IMU @ 0x68
-//Required setup and loop functions
-//Runs at power on
-///////////////////////////////////////////////////////////////////////////////setup
-void setup()
-{
-  rovState = DISCONNECTED;
-  initializePins();
-  rs485.begin(250000); //250kbit/s RS-485
-  ms5803.begin();
-  mpu.initialize();
-  Wire.begin(byte(400000)); //400 kHz i2c
-}
-///////////////////////////////////////////////////////////////////////////////loop
-void loop()
-{
-  if(count == 0) {
-    //10 times a second
-    slowLoop();
-  }
-  if(micros() - lastLoopMicros > 10000) {
-    //every 10000 microseconds, or every 10 milliseconds, or 100 times a second
-    lastLoopMicros = micros();
-    fastLoop();
-    count++;
-    if(count >= 8) {
-      count = 0;
-    }
-  }
-  //as often as possible, update Modbus registers with serial port data
-  rs485.poll(modbusRegisters, numRegisters);
-}
 ///////////////////////////////////////////////////////////////////////////////Function Declarations
+/*******************************************************************************/
+//function takes a signed 8-bit integer for the speed (range -128<->127)
+//negative values go reverse, positive forwards
+//other two params are the pins to use (use pindefs.h constants please)
+/*******************************************************************************/
+void setManipulator(int8_t val, byte dir1, byte dir2) {
+  if(val > 0) {
+    analogWrite(dir1, (val*2));
+    digitalWrite(dir2, LOW);
+  }
+  else if(val < 0) {
+    analogWrite(dir1, (257+(val*2)));
+    digitalWrite(dir2, HIGH);
+  } else {
+    digitalWrite(dir1, LOW);
+    digitalWrite(dir2, LOW);
+  }
+}
 void fastLoop() { //runs 100 times a second
   //Check if msg state is ok
   if(!msgState)
   {
     Serial.println("sum ting wong");//report error
     //The Serial port is already used by Modbus. Maybe a register for errors?
-    rovState = DISCONNECTED;
-    
+    rovState = STATE_DISCONNECTED;
+
     return; //break
   }
-  //Write to thrusters the 6 16-bit #s 
+  //Write to thrusters the 6 16-bit #s
   thruster1.set(modbusRegisters[0]);//yo i don't know if this is right???
   thruster2.set(modbusRegisters[1]);
   thruster3.set(modbusRegisters[2]);
@@ -145,34 +147,38 @@ void fastLoop() { //runs 100 times a second
   thruster5.set(modbusRegisters[4]);
   thruster6.set(modbusRegisters[5]);
   //converting to uint8_ts
-  manipRegisters[0] = (uint8_t)((modbusRegisters[6] & 0xFF00) >> 8); 
+  manipRegisters[0] = (uint8_t)((modbusRegisters[6] & 0xFF00) >> 8);
   manipRegisters[1] = (uint8_t)(modbusRegisters[6] & 0x00FF);
   manipRegisters[2] = (uint8_t)((modbusRegisters[7] & 0xFF00) >> 8);
-  manipRegisters[3] = (uint8_t)(modbusRegisters[7] & 0x00FF); 
+  manipRegisters[3] = (uint8_t)(modbusRegisters[7] & 0x00FF);
   // Set 4 manipulators motor speeds and direction
   setManipulator(manipRegisters[0], MOT1_DIR1, MOT1_DIR2);
   setManipulator(manipRegisters[1], MOT2_DIR1, MOT2_DIR2);
   setManipulator(manipRegisters[2], MOT3_DIR1, MOT3_DIR2);
   setManipulator(manipRegisters[3], MOT4_DIR1, MOT4_DIR2);
-  if(oddIteration)
-  {
-    myPressure = ms5803.getPressure(ADC_1024); //returns Pascals (N/m^2), precise to 0.4mbar or about 4mm depth change
-    myDepth -= BAROMETRIC_PRESSURE; //subtract air pressure
-    myDepth = myPressure / WATER_DENSITY / GRAVITY_ACCELERATION; //Assumption that water density is 1 g/cm^3 
-    //myDepth is in meters
-    oddIteration = false;
-  }
-  else
-  {
-    oddIteration = true;
-  }
 
-  //Read out data from sensor
-  
+  myPressure = ms5803.getPressure(ADC_1024); //returns Pascals (N/m^2), precise to 0.4mbar or about 4mm depth change
+  myDepth -= BAROMETRIC_PRESSURE; //subtract air pressure
+  myDepth = myPressure / WATER_DENSITY / GRAVITY_ACCELERATION; //Assumption that water density is 1 g/cm^3 
+  //myDepth is in meters
+
+  //wait for IMU to have readings ready
+  while(mpuFifoCount < mpuPacketSize) mpuFifoCount = mpu.getFIFOCount();
+  mpuIntStatus = mpu.getIntStatus();
+  mpuFifoCount = mpu.getFIFOCount();
+  //check for overflow of IMU data buffer
+  if((mpuIntStatus & 0x10) || mpuFifoCount == 1024) {
+    mpu.resetFIFO();
+  } else if(mpuIntStatus & 0x02) {
+    //collect MPU data
+    mpu.getFIFOBytes(mpuFifoBuffer, mpuPacketSize);
+    mpuFifoCount -= mpuPacketSize;
+  }
   //Get IMU DMP readings aka MPU6050 readings, convert, map to 16-bit int, put in register array
-  modbusRegisters[9] = mpu.getRotationZ(); //Yaw is Z
-  modbusRegisters[10] = mpu.getRotationY(); //Pitch is Y
-  modbusRegisters[11] = mpu.getRotationX(); //Roll is X
+  mpu.dmpGetQuaternion(&q, mpuFifoBuffer);
+  mpu.dmpGetGravity(&gravity, &q);
+  mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+  //ypr is now an array with RADIANS yaw, pitch, and roll in indices 0, 1, 2 respectively
   //AnalogRead voltage sensor
   if(myVoltage < 2.5)//If voltage is lower than 2.5V
   {
@@ -193,28 +199,10 @@ void slowLoop() { //runs 10 times / second
   //get thruster temperatures
 
   //get water temperatures
-  myTemperature = ms5803.getTemperature(ADC_1024);
+  myTemperature = ms5803.getTemperature(CELSIUS, ADC_1024);
   
   //update status LED
-  digitalWrite(STATUS_LED, rovState & (1 << count)); //set LED state to the nth bit of the ROV's state. The LED thus blinks differently in different states
-}
-/*******************************************************************************/
-//function takes a signed 8-bit integer for the speed (range -128<->127)
-//negative values go reverse, positive forwards
-//other two params are the pins to use (use pindefs.h constants please)
-/*******************************************************************************/
-void setManipulator(int8_t val, byte dir1, byte dir2) {
-  if(val > 0) {
-    analogWrite(dir1, (val*2));
-    digitalWrite(dir2, LOW);
-  }
-  else if(val < 0) {
-    analogWrite(dir1, (257+(val*2)));
-    digitalWrite(dir2, HIGH);
-  } else {
-    digitalWrite(dir1, LOW);
-    digitalWrite(dir2, LOW);
-  }
+  digitalWrite(STATUS_LED, (rovState & (1 << count))); //set LED state to the nth bit of the ROV's state. The LED thus blinks differently in different states
 }
 
 void initializePins() {
@@ -222,11 +210,11 @@ void initializePins() {
   pinMode(STATUS_LED, OUTPUT);
   pinMode(TX_EN, OUTPUT);
   pinMode(MOT1_DIR1, OUTPUT);
-  pinMode(MOT1_DIR2 OUTPUT);
+  pinMode(MOT1_DIR2, OUTPUT);
   pinMode(MOT2_DIR1, OUTPUT);
-  pinMode(MOT2_DIR2 OUTPUT);
+  pinMode(MOT2_DIR2, OUTPUT);
   pinMode(MOT3_DIR1, OUTPUT);
-  pinMode(MOT3_DIR2 OUTPUT);
+  pinMode(MOT3_DIR2, OUTPUT);
   pinMode(MOT4_DIR1, OUTPUT);
   pinMode(MOT4_DIR2, OUTPUT);
   pinMode(RLY1_CTRL, OUTPUT);
@@ -234,4 +222,49 @@ void initializePins() {
   pinMode(LED_CTRL, OUTPUT);
   pinMode(SPK, OUTPUT);
 }
-  
+//Required setup and loop functions
+//Runs at power on
+///////////////////////////////////////////////////////////////////////////////setup
+void setup()
+{
+  initializePins();
+  rs485.begin(250000); //250kbit/s RS-485
+  Wire.begin((int)400000); //400 kHz i2c
+  ms5803.begin();
+  mpu.initialize();
+  //mpu.testConnection() and report any errors
+  uint8_t mpuStatus = mpu.dmpInitialize();
+  // supply your own gyro offsets here, scaled for min sensitivity
+  mpu.setXGyroOffset(220);
+  mpu.setYGyroOffset(76);
+  mpu.setZGyroOffset(-85);
+  mpu.setZAccelOffset(1788); // 1688 factory default for my test chip
+  if(mpuStatus == 0) {
+    //initialized MPU alright
+    mpu.setDMPEnabled(true);
+    mpuIntStatus = mpu.getIntStatus();
+    mpuPacketSize = mpu.dmpGetFIFOPacketSize();
+  } else {
+    //MPU initializing error
+    //mpuStatus is the error code
+  }
+}
+///////////////////////////////////////////////////////////////////////////////loop
+void loop()
+{
+  if(count == 0) {
+    //10 times a second
+    slowLoop();
+  }
+  if(micros() - lastLoopMicros > 10000) {
+    //every 10000 microseconds, or every 10 milliseconds, or 100 times a second
+    lastLoopMicros = micros();
+    fastLoop();
+    count++;
+    if(count >= 8) {
+      count = 0;
+    }
+  }
+  //as often as possible, update Modbus registers with serial port data
+  rs485.poll(modbusRegisters, numRegisters);
+}
