@@ -62,3 +62,8 @@
 //Set low to receive data from control station (should be default state)
 //This should be handled in the Modbus library. Just reference this pin there
 #define TX_EN 2
+
+//VOLTAGE MONITORING PIN
+//Analog pin to measure voltage
+//The actual value is scaled down proportionally by a voltage divider
+#define VOLT_MONITOR A0
