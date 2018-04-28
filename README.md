@@ -17,10 +17,18 @@ Run <code>make</code> to compile the code into binaries, which go into a subfold
 # Adding libraries
 Put the library folder in the Arduino IDE installation directory/libraries (usually /usr/share/arduino/libraries). In the Makefile, append the complete name of this library to the ARDUINO_LIBS variable, with a space separating the new name from the previous ones.
 
-# Uploading to ROV computer
-To install on the ROV, make sure you first get the ROV out of its current firmware and into the bootloader (the status LED should blink 5x on bootloader start and then stay off).
-
-Now just run <code>make rov</code>. The status LED will blink 2x when the code finishes installing, the ROV will reboot, and the new firmware will run.
-
 # Uploading to commercial Arduino UNO (for during development)
 Compile the source. To install on a regular Arduino UNO board, just run <code>make upload</code>. This uploads over USB, the usual way.
+
+# Uploading to ROV computer
+To install on the ROV, bring the ROV to the surface and attach the ROV flasher box to the ROV's firmware flashing port. Run make rov to install the code.
+
+# About the ROV flasher box
+It's just an Arduino UNO running the ArduinoISP sketch. The Arduino inside the box converts USB serial data at 19200 baud into ISP data that can be used to program another Arduino chip inside the ROV.
+
+The LED codes go like this:
+
+Green - Slow fade in and out indicates ready state
+Yellow - Data is being transferred through the box (either received or transmitted)
+Red - An error has occured. Some errors will occur without lighting this lamp and still stop the flash from completing properly.
+Blue (on ROV computer) - when data is reaching the ROV over the ISP lines, this LED will flash (because it is connected to the ISP clock line as well as a digital output of the ROV computer)
