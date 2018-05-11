@@ -187,9 +187,21 @@ void slowLoop() { //runs 10 times / second
 	digitalWrite(RLY2_CTRL, modbusRegisters[13] & (1<<1));
 	digitalWrite(LED_CTRL, modbusRegisters[13] & (1<<2));
 
-  //get thruster rpms
-
-  //get thruster temperatures
+  //get thruster rpms and temperatures. .update() puts these values in the objects where they can be accessed by methods
+	thruster1.update();
+	modbusRegister[14] = (int)(thruster1.temperature()*10);
+	modbusRegister[15] = (int)(thruster2.temperature()*10);
+	modbusRegister[16] = (int)(thruster3.temperature()*10);
+	modbusRegister[17] = (int)(thruster4.temperature()*10);
+	modbusRegister[18] = (int)(thruster5.temperature()*10);
+	modbusRegister[19] = (int)(thruster6.temperature()*10);
+	modbusRegister[20] = thruster1.rpm();
+	modbusRegister[21] = thruster2.rpm();
+	modbusRegister[22] = thruster3.rpm();
+	modbusRegister[23] = thruster4.rpm();
+	modbusRegister[24] = thruster5.rpm();
+	modbusRegister[25] = thruster6.rpm();
+	
 	
   //update status LED
   digitalWrite(STATUS_LED, (rovState & (1 << blinkCount))); //set LED state to the nth bit of the ROV's state. The LED thus blinks differently in different states
