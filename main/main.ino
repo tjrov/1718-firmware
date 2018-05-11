@@ -7,7 +7,16 @@
 
 //when this is NOT commented out, debug Serial.print statements will work but Modbus will not work
 #define DEBUG
-
+/******************************
+ * THRUSTER DEFINITIONS
+ *          FRONT
+ *  [1]             [4]
+ *  
+ *  [2]             [5]
+ * 
+ *  [3]             [6]
+ * 
+ ******************************/
 
 //This is the main code for the arduino I guess.
 //Look at example code included with libraries for how to use APIs
@@ -108,7 +117,7 @@ float ypr[3];
 #ifndef DEBUG
 Modbus rs485(1, 0, TX_EN);
 #endif
-Arduino_I2C_ESC thruster1(uint8_t(0x2A), uint8_t(6));
+Arduino_I2C_ESC thruster1(uint8_t(0x31), uint8_t(6));
 Arduino_I2C_ESC thruster2(uint8_t(0x2B), uint8_t(6));
 Arduino_I2C_ESC thruster3(uint8_t(0x2C), uint8_t(6));
 Arduino_I2C_ESC thruster4(uint8_t(0x2D), uint8_t(6));
@@ -281,6 +290,7 @@ void setup()
 ///////////////////////////////////////////////////////////////////////////////loop
 void loop()
 {
+  spin();
   if (count == 0) {
     //10 times a second
     slowLoop();
@@ -299,3 +309,21 @@ void loop()
   msgState = rs485.poll(modbusRegisters, numRegisters);
 #endif
 }
+void spin()
+{
+  //thruster1.set(1000);
+  //thruster2.set(5000);
+  //thruster3.set(5000);
+  //thruster4.set(5000);
+  thruster5.set(5000);
+  //thruster6.set(5000);
+  delay(1000);
+  thruster1.set(0);
+  thruster2.set(0);
+  thruster3.set(0);
+  thruster4.set(0);
+  thruster5.set(0);
+  thruster6.set(0);
+  delay(10000);
+}
+
