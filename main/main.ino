@@ -1,31 +1,21 @@
-///////////////////////////////////////////////////////////////////////////////config & constants
-#define GRAVITY_ACCELERATION 9.81415 //For Fairfax. Used vertical component from here:
-//http://www.wolframalpha.com/widgets/view.jsp?id=e856809e0d522d3153e2e7e8ec263bf2
-#define BAROMETRIC_PRESSURE 100000 //Varies greatly based on weather. 100kPa is a ballpark.
-#define WATER_DENSITY 0.99272 //chlorine reduces density of pool water
-#define DEPTH_CALC_CONSTANT (1/WATER_DENSITY/GRAVITY_ACCELERATION)
-
-//when this is NOT commented out, debug Serial.print statements will work but Modbus will not work
-#define DEBUG
 /******************************
  * THRUSTER DEFINITIONS
- *          FRONT
- *  [1]             [4]
+ *             FORE
+ *      [1]             [4]
  *  
- *  [2]             [5]
+ * PORT [2]             [5] STARBOARD
  * 
- *  [3]             [6]
- * 
+ *      [3]             [6]
+ *              AFT
  ******************************/
+
+#define SERIAL_DEBUG 1 //change to 0 to stop Serial debug, which blocks Modbus operation
 
 //This is the main code for the arduino I guess.
 //Look at example code included with libraries for how to use APIs
 ///////////////////////////////////////////////////////////////////////////////references
 #include "pindefs.h" //use quotes since file is in same directory
 #include <Wire.h> //Arduino I2C Library used by all libs below
-//for depth sensor over i2c bus
-//Pressure measured = density * gravity constant * depth + air pressure
-#include "SparkFun_MS5803_I2C.h"
 //for orientation sensor using MPU-6050 chip over i2c bus
 #include "I2Cdev.h"
 #include "MPU6050_6Axis_MotionApps20.h"
@@ -39,29 +29,21 @@
 ///////////////////////////////////////////////////////////////////////////////variables
 //ROV states for Status & Control Register; binary values specify LED flash patterns over time
 #define STATE_DISCONNECTED 0b00000001 //no communication to surface or a communication error (pulse status LED once in a while)
-#define STATE_CONNECTED_DISARMED 0b00001111 //communication works, but the user has disarmed the ROV so it won't drive around (slow flash status LED)
-#define STATE_CONNECTED_ARMED 0b10101010 //communication works, and the user has armed the ROV so it can be driven around (fast flash status LED)
+#define STATE_CONNECTED 0b10101010 //communication works, and the user has armed the ROV so it can be driven around (fast flash status LED)
 uint8_t rovState = STATE_DISCONNECTED;
 //ROV errors for Status & Control Register
 #define ERROR_NONE 0
 //others as needed
 uint8_t rovError = ERROR_NONE;
 
-//Timing-related
+//Timing variables
 unsigned long lastLoopMicros;
-byte count = 0; //count for slow loop
-byte blinkCount = 0; //count LED blink state
-bool oddIteration; //is the iteration odd
-//Communication-related
-const byte numRegisters = 29; //some number
+uint8_t count = 0; //count for slow loop
+uint8_t blinkCount = 0; //count LED blink state
+//Modbus variables
+const uint8_t numRegisters = 29; //some number
 uint16_t modbusRegisters[numRegisters] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 int8_t manipRegisters[4] = {0, 0, 0, 0}; //registers in uint8_t for manipulators
-uint8_t msgState = 0; //is the msgState ok?
-//Hardware-related
-double myVoltage = 0.0;
-float myPressure = 0;
-uint16_t myDepth = 0;
-float myTemperature = 0;
 //MPU variables
 uint16_t mpuPacketSize;
 uint16_t mpuFifoCount;
@@ -92,7 +74,7 @@ float ypr[3];
   11. Roll
   12. Depth Reading (Use conversion methods in sensor library to get mbars and send that up for conversion to depth based on weather conditions)
   //==============Slow loop data (Low priority; you don't have to check these unless you want to)================
-  13. Booleans for the two relay control pins' states, headlights state, buzzer (for OBS activation) state (use each bit as a boolean)
+  13. Booleans for the two relay control pins' states (RLY1 is buzzer), headlights state (use each bit as a boolean)
   14. Thruster RPM #1
   15.Thruster RPM #2
   16.Thruster RPM #3
@@ -106,24 +88,22 @@ float ypr[3];
   24.Thruster Temp #5
   25.Thruster Temp #6
   26.Water temp (From depth sensor, which is in contact w/ water)
-  27.ROV Status & Control Register. High byte holds error codes (can't communicate with an ESC, that sort of thing)
-				Low byte can be changed to arm/disarm ROV, reset board, enter bootloader, other stuff
-  28.Modbus Status Register. High byte holds getErrCount(), Low byte holds getLastError().
+  27.ROV Status: holds error codes
+  28.Modbus Status Register. High byte holds getLastError(), Low byte holds getErrCnt().
 */
 ///////////////////////////////////////////////////////////////////////////////Object instantiations
 //slave address 1, use Arduino serial port, TX_EN pin is defined in pindefs.h file
-#define MS5803_ADDR 0x76
 #define MPU6050_ADDR 0x68
-#ifndef DEBUG
+
 Modbus rs485(1, 0, TX_EN);
-#endif
+
 Arduino_I2C_ESC thruster1(uint8_t(0x31), uint8_t(6));
 Arduino_I2C_ESC thruster2(uint8_t(0x2B), uint8_t(6));
 Arduino_I2C_ESC thruster3(uint8_t(0x2C), uint8_t(6));
 Arduino_I2C_ESC thruster4(uint8_t(0x2D), uint8_t(6));
 Arduino_I2C_ESC thruster5(uint8_t(0x2E), uint8_t(6));
 Arduino_I2C_ESC thruster6(uint8_t(0x2F), uint8_t(6));
-MS5803 ms5803(ms5803_addr(MS5803_ADDR)); //0x76
+
 MPU6050 mpu(MPU6050_ADDR); //the IMU @ 0x68
 ///////////////////////////////////////////////////////////////////////////////Function Declarations
 /*******************************************************************************/
@@ -163,16 +143,8 @@ void readIMU() {
   mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
 }
 void fastLoop() { //runs 100 times a second
-  //Check if msg state is ok
-#ifndef DEBUG
-  if (msgState <= 4)
-  {
-    rovState = STATE_DISCONNECTED;
-    return; //break
-  }
-#endif
   //Write to thrusters the 6 16-bit #s
-  thruster1.set(modbusRegisters[0]);//yo i don't know if this is right???
+  thruster1.set(modbusRegisters[0]);
   thruster2.set(modbusRegisters[1]);
   thruster3.set(modbusRegisters[2]);
   thruster4.set(modbusRegisters[3]);
@@ -191,13 +163,6 @@ void fastLoop() { //runs 100 times a second
 
   //AnalogRead voltage sensor
   modbusRegisters[8] = analogRead(VOLT_MONITOR);
-  /*if (myVoltage < 2.5) //If voltage is lower than 2.5V
-  {
-    setManipulator(0, MOT1_DIR1, MOT1_DIR2);
-    setManipulator(0, MOT2_DIR1, MOT2_DIR2);
-    setManipulator(0, MOT3_DIR1, MOT3_DIR2);
-    setManipulator(0, MOT4_DIR1, MOT4_DIR2);//Stop all motors
-  }*/
 
   readIMU();
   //ypr is now a float array with RADIANS yaw, pitch, and roll in indices 0, 1, 2 respectively
@@ -212,30 +177,43 @@ void fastLoop() { //runs 100 times a second
     Serial.print('\t');
     Serial.println(ypr[2]);*/
 
-  myPressure = ms5803.getPressure(ADC_1024); //returns Pascals (N/m^2), precise to 0.4mbar or about 4mm depth change
-  myPressure -= BAROMETRIC_PRESSURE; //ignore the atmosphere, we only care about the pool water pressure here
-  myDepth = myPressure * DEPTH_CALC_CONSTANT; //Assumption that water density is 1 g/cm^3
-  //myDepth is in meters
-  modbusRegisters[12] = map(myDepth, 0, 20, 0, 65535);
-
   //Place things in array
 
   //Report Errors
 }
 void slowLoop() { //runs 10 times / second
-  //do things with the booleans
+  //set relays, headlights
+	digitalWrite(RLY1_CTRL, modbusRegisters[13] & (1<<0));
+	digitalWrite(RLY2_CTRL, modbusRegisters[13] & (1<<1));
+	digitalWrite(LED_CTRL, modbusRegisters[13] & (1<<2));
 
-  //get thruster rpm
+  //get thruster rpms
 
   //get thruster temperatures
-
-  //get water temperatures
-  myTemperature = ms5803.getTemperature(CELSIUS, ADC_1024);
-
+	
   //update status LED
   digitalWrite(STATUS_LED, (rovState & (1 << blinkCount))); //set LED state to the nth bit of the ROV's state. The LED thus blinks differently in different states
   blinkCount++;
   if (blinkCount >= 8) blinkCount = 0;
+	
+  //update modbus status/error registers
+	modbusRegisters[28] = (rs485.getLastError() << 8) | (rs485.getErrCnt() & 0x00FF)
+	/*From ModbusRtu.h, getLastError() returns the following values:
+	ERR_NOT_MASTER = -1,
+	ERR_POLLING = -2,
+	ERR_BUFF_OVERFLOW = -3,
+	ERR_BAD_CRC = -4,
+	ERR_EXCEPTION = -5*/
+		
+		//update ROV status/error registers
+		modbusRegisters[27] = rovError;
+		
+//state to disconnected if no comms have occurred during timeout period
+		if(rs485.getTimeOutState()) {
+			rovState = STATE_DISCONNECTED;
+		} else {
+			rovState = STATE_CONNECTED;
+		}
 }
 
 void initializePins() {
@@ -253,7 +231,6 @@ void initializePins() {
   pinMode(RLY1_CTRL, OUTPUT);
   pinMode(RLY2_CTRL, OUTPUT);
   pinMode(LED_CTRL, OUTPUT);
-  pinMode(SPK, OUTPUT);
 }
 //Required setup and loop functions
 //Runs at power on
@@ -261,14 +238,15 @@ void initializePins() {
 void setup()
 {
   initializePins();
-#ifdef DEBUG
+  //Transmit-only Serial debugging
+  #if SERIAL_DEBUG
   digitalWrite(TX_EN, HIGH);
   Serial.begin(250000);
-#else
+  #else
   rs485.begin(250000); //250kbit/s RS-485
-#endif
+  rs485.setTimeout(500); //if no comms occur for 500ms, ROV goes into disconnected state
+  #endif
   Wire.begin((int)400000); //400 kHz i2c
-  ms5803.begin();
   mpu.initialize();
   //mpu.testConnection() and report any errors
   uint8_t mpuStatus = mpu.dmpInitialize();
@@ -290,7 +268,7 @@ void setup()
 ///////////////////////////////////////////////////////////////////////////////loop
 void loop()
 {
-  spin();
+  //spin();
   if (count == 0) {
     //10 times a second
     slowLoop();
@@ -305,25 +283,8 @@ void loop()
     }
   }
   //as often as possible, update Modbus registers with serial port data
-#ifndef DEBUG
-  msgState = rs485.poll(modbusRegisters, numRegisters);
+#if SERIAL_DEBUG
+#else
+  rs485.poll(modbusRegisters, numRegisters);
 #endif
 }
-void spin()
-{
-  //thruster1.set(1000);
-  //thruster2.set(5000);
-  //thruster3.set(5000);
-  //thruster4.set(5000);
-  thruster5.set(5000);
-  //thruster6.set(5000);
-  delay(1000);
-  thruster1.set(0);
-  thruster2.set(0);
-  thruster3.set(0);
-  thruster4.set(0);
-  thruster5.set(0);
-  thruster6.set(0);
-  delay(10000);
-}
-
