@@ -9,7 +9,7 @@
  *              AFT
  ******************************/
 
-#define SERIAL_DEBUG 1 //change to 0 to stop Serial debug, which blocks Modbus operation
+#define SERIAL_DEBUG 0 //change to 0 to stop Serial debug, which blocks Modbus operation
 
 //This is the main code for the arduino I guess.
 //Look at example code included with libraries for how to use APIs
@@ -183,60 +183,65 @@ void fastLoop() { //runs 100 times a second
 }
 void slowLoop() { //runs 10 times / second
   //set relays, headlights
-	digitalWrite(RLY1_CTRL, modbusRegisters[13] & (1<<0));
-	digitalWrite(RLY2_CTRL, modbusRegisters[13] & (1<<1));
-	digitalWrite(LED_CTRL, modbusRegisters[13] & (1<<2));
+  digitalWrite(RLY1_CTRL, modbusRegisters[13] & (1<<0));
+  digitalWrite(RLY2_CTRL, modbusRegisters[13] & (1<<1));
+  digitalWrite(LED_CTRL, modbusRegisters[13] & (1<<2));
 
   //get thruster rpms and temperatures. .update() puts these values in the objects where they can be accessed by methods
-	thruster1.update();
-	modbusRegister[14] = (int)(thruster1.temperature()*10);
-	modbusRegister[15] = (int)(thruster2.temperature()*10);
-	modbusRegister[16] = (int)(thruster3.temperature()*10);
-	modbusRegister[17] = (int)(thruster4.temperature()*10);
-	modbusRegister[18] = (int)(thruster5.temperature()*10);
-	modbusRegister[19] = (int)(thruster6.temperature()*10);
-	modbusRegister[20] = thruster1.rpm();
-	modbusRegister[21] = thruster2.rpm();
-	modbusRegister[22] = thruster3.rpm();
-	modbusRegister[23] = thruster4.rpm();
-	modbusRegister[24] = thruster5.rpm();
-	modbusRegister[25] = thruster6.rpm();
-	
-	
+  thruster1.update();
+  thruster2.update();
+  thruster3.update();
+  thruster4.update();
+  thruster5.update();
+  thruster6.update();
+  modbusRegisters[14] = (int)(thruster1.temperature()*10);
+  modbusRegisters[15] = (int)(thruster2.temperature()*10);
+  modbusRegisters[16] = (int)(thruster3.temperature()*10);
+  modbusRegisters[17] = (int)(thruster4.temperature()*10);
+  modbusRegisters[18] = (int)(thruster5.temperature()*10);
+  modbusRegisters[19] = (int)(thruster6.temperature()*10);
+  modbusRegisters[20] = thruster1.rpm();
+  modbusRegisters[21] = thruster2.rpm();
+  modbusRegisters[22] = thruster3.rpm();
+  modbusRegisters[23] = thruster4.rpm();
+  modbusRegisters[24] = thruster5.rpm();
+  modbusRegisters[25] = thruster6.rpm();
+  
+  
   //update status LED
   digitalWrite(STATUS_LED, (rovState & (1 << blinkCount))); //set LED state to the nth bit of the ROV's state. The LED thus blinks differently in different states
   blinkCount++;
   if (blinkCount >= 8) blinkCount = 0;
-	
+  
   //update modbus status/error registers
-	modbusRegisters[28] = (rs485.getLastError() << 8) | (rs485.getErrCnt() & 0x00FF)
-	/*From ModbusRtu.h, getLastError() returns the following values:
-	ERR_NOT_MASTER = -1,
-	ERR_POLLING = -2,
-	ERR_BUFF_OVERFLOW = -3,
-	ERR_BAD_CRC = -4,
-	ERR_EXCEPTION = -5*/
-		
-		//update ROV status/error registers
-		modbusRegisters[27] = rovError;
-		
+  modbusRegisters[28] = (rs485.getLastError() << 8) | (rs485.getErrCnt() & 0x00FF);
+  /*From ModbusRtu.h, getLastError() returns the following values:
+  ERR_NOT_MASTER = -1,
+  ERR_POLLING = -2,
+  ERR_BUFF_OVERFLOW = -3,
+  ERR_BAD_CRC = -4,
+  ERR_EXCEPTION = -5*/
+    
+    //update ROV status/error registers
+    modbusRegisters[27] = rovError;
+    
 //state to disconnected if no comms have occurred during timeout period
-		if(rs485.getTimeOutState()) {
-			rovState = STATE_DISCONNECTED;
-			//if motors are in a running state, stop them on lost connection
-			modbusRegisters[0] = 0;
-			modbusRegisters[1] = 0;
-			modbusRegisters[2] = 0;
-			modbusRegisters[3] = 0;
-			modbusRegisters[4] = 0;
-			modbusRegisters[5] = 0;
-			modbusRegisters[6] = 0;
-			modbusRegisters[7] = 0;
-			modbusRegisters[13] = 0;
-			modbusRegisters[14] = 0;
-		} else {
-			rovState = STATE_CONNECTED;
-		}
+    if(rs485.getTimeOutState()) {
+      rovState = STATE_DISCONNECTED;
+      //if motors are in a running state, stop them on lost connection
+      modbusRegisters[0] = 0;
+      modbusRegisters[1] = 0;
+      modbusRegisters[2] = 0;
+      modbusRegisters[3] = 0;
+      modbusRegisters[4] = 0;
+      modbusRegisters[5] = 0;
+      modbusRegisters[6] = 0;
+      modbusRegisters[7] = 0;
+      modbusRegisters[13] = 0;
+      modbusRegisters[14] = 0;
+    } else {
+      rovState = STATE_CONNECTED;
+    }
 }
 
 void initializePins() {
@@ -267,7 +272,7 @@ void setup()
   Serial.begin(250000);
   #else
   rs485.begin(250000); //250kbit/s RS-485
-  rs485.setTimeout(500); //if no comms occur for 500ms, ROV goes into disconnected state
+  rs485.setTimeOut(500); //if no comms occur for 500ms, ROV goes into disconnected state
   #endif
   Wire.begin((int)400000); //400 kHz i2c
   mpu.initialize();
