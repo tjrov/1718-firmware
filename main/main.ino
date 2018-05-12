@@ -223,6 +223,17 @@ void slowLoop() { //runs 10 times / second
 //state to disconnected if no comms have occurred during timeout period
 		if(rs485.getTimeOutState()) {
 			rovState = STATE_DISCONNECTED;
+			//if motors are in a running state, stop them on lost connection
+			modbusRegisters[0] = 0;
+			modbusRegisters[1] = 0;
+			modbusRegisters[2] = 0;
+			modbusRegisters[3] = 0;
+			modbusRegisters[4] = 0;
+			modbusRegisters[5] = 0;
+			modbusRegisters[6] = 0;
+			modbusRegisters[7] = 0;
+			modbusRegisters[13] = 0;
+			modbusRegisters[14] = 0;
 		} else {
 			rovState = STATE_CONNECTED;
 		}
