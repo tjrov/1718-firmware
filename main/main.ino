@@ -216,7 +216,24 @@ void slowLoop() { //runs 10 times / second
   if(!thruster1.isAlive() || !thruster2.isAlive() || !thruster3.isAlive() || !thruster4.isAlive() || !thruster5.isAlive() || !thruster6.isAlive()) {
     rovError = ERROR_ESC;
   }
-
+  if(!thruster1.isAlive()) {
+    modbusRegisters[14] = 0;
+  }
+  if(!thruster2.isAlive()) {
+    modbusRegisters[15] = 0;
+  }
+  if(!thruster3.isAlive()) {
+    modbusRegisters[16] = 0;
+  }
+  if(!thruster4.isAlive()) {
+    modbusRegisters[17] = 0;
+  }
+  if(!thruster5.isAlive()) {
+    modbusRegisters[18] = 0;
+  }
+  if(!thruster6.isAlive()) {
+    modbusRegisters[19] = 0;
+  }
 
   //update status LED
   digitalWrite(STATUS_LED, (rovState & (1 << blinkCount))); //set LED state to the nth bit of the ROV's state. The LED thus blinks differently in different states
