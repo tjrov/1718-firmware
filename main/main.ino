@@ -9,7 +9,10 @@
                 AFT
  ******************************/
 
-#define SERIAL_DEBUG 1 //change to 0 to stop Serial debug, which blocks Modbus operation
+#define SERIAL_DEBUG 0 //change to 0 to stop Serial debug and allow Modbus operation
+#define FAST_LOOP_INTERVAL 10000
+#define SERIAL_BAUD 115200
+#define RS485_TIMEOUT 500
 
 //This is the main code for the arduino I guess.
 //Look at example code included with libraries for how to use APIs
@@ -269,10 +272,10 @@ void setup()
   //Transmit-only Serial debugging
 #if SERIAL_DEBUG
   digitalWrite(TX_EN, LOW);
-  Serial.begin(250000);
+  Serial.begin(SERIAL_BAUD);
 #else
-  rs485.begin(250000); //250kbit/s RS-485
-  rs485.setTimeOut(500); //if no comms occur for 500ms, ROV goes into disconnected state
+  rs485.begin(SERIAL_BAUD); //250kbit/s RS-485
+  rs485.setTimeOut(RS485_TIMEOUT); //if no comms occur for 500ms, ROV goes into disconnected state
 #endif
   Wire.begin((int)400000); //400 kHz i2c
   mpu.initialize();
@@ -296,26 +299,28 @@ void setup()
 ///////////////////////////////////////////////////////////////////////////////loop
 void loop()
 {
-  //spin();
-  if (count == 0) {
-    //10 times a second
-    slowLoop();
-  }
   if (micros() - lastLoopMicros > 10000) {
     //every 10000 microseconds, or every 10 milliseconds, or 100 times a second
     lastLoopMicros = micros();
     fastLoop();
     count++;
     if (count >= 10) {
+      slowLoop();
+#if SERIAL_DEBUG
+      Serial.println("slow");
+#endif
       count = 0;
     }
+#if SERIAL_DEBUG
+    Serial.println(count);
+#endif
   }
   //as often as possible, update Modbus registers with serial port data
 #if SERIAL_DEBUG
   if (Serial.available() > 0) {
     char c = Serial.read();
-    switch(c) {
-    case 'w':
+    switch (c) {
+      case 'w':
         modbusRegisters[0] = 1000;
         modbusRegisters[1] = 0;
         modbusRegisters[2] = 1000;
@@ -330,7 +335,7 @@ void loop()
         modbusRegisters[3] = -1000;
         modbusRegisters[4] = 0;
         modbusRegisters[5] = -1000;
-       break;    
+        break;
       case 'a':
         modbusRegisters[0] = -1000;
         modbusRegisters[1] = 0;
