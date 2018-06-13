@@ -11,7 +11,7 @@
 
 #define SERIAL_DEBUG 0 //change to 0 to stop Serial debug and allow Modbus operation
 #define FAST_LOOP_INTERVAL 10000
-#define SERIAL_BAUD 115200
+#define SERIAL_BAUD 250000
 #define RS485_TIMEOUT 500
 
 //This is the main code for the arduino I guess.
@@ -36,6 +36,9 @@
 uint8_t rovState = STATE_DISCONNECTED;
 //ROV errors for Status & Control Register
 #define ERROR_NONE 0
+#define ERROR_IMU 1
+#define ERROR_DEPTH 2
+#define ERROR_ESC 3
 //others as needed
 uint8_t rovError = ERROR_NONE;
 
@@ -210,6 +213,10 @@ void slowLoop() { //runs 10 times / second
   modbusRegisters[24] = thruster5.rpm();
   modbusRegisters[25] = thruster6.rpm();
 
+  if(!thruster1.isAlive() || !thruster2.isAlive() || !thruster3.isAlive() || !thruster4.isAlive() || !thruster5.isAlive() || !thruster6.isAlive()) {
+    rovError = ERROR_ESC;
+  }
+
 
   //update status LED
   digitalWrite(STATUS_LED, (rovState & (1 << blinkCount))); //set LED state to the nth bit of the ROV's state. The LED thus blinks differently in different states
@@ -273,6 +280,7 @@ void setup()
 #if SERIAL_DEBUG
   digitalWrite(TX_EN, LOW);
   Serial.begin(SERIAL_BAUD);
+  Serial.println("initialized");
 #else
   rs485.begin(SERIAL_BAUD); //250kbit/s RS-485
   rs485.setTimeOut(RS485_TIMEOUT); //if no comms occur for 500ms, ROV goes into disconnected state
@@ -291,9 +299,16 @@ void setup()
     mpu.setDMPEnabled(true);
     mpuIntStatus = mpu.getIntStatus();
     mpuPacketSize = mpu.dmpGetFIFOPacketSize();
+#if SERIAL_DEBUG
+    Serial.println("IMU init");
+#endif
   } else {
     //MPU initializing error
     //mpuStatus is the error code
+#if SERIAL_DEBUG
+    Serial.println("IMU failed");
+#endif
+    rovError = ERROR_IMU;
   }
 }
 ///////////////////////////////////////////////////////////////////////////////loop
