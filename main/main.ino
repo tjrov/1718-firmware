@@ -10,7 +10,7 @@
  ******************************/
 
 #define SERIAL_DEBUG 0 //change to 0 to stop Serial debug and allow Modbus operation
-#define FAST_LOOP_INTERVAL 10000
+#define FAST_LOOP_INTERVAL 10000 //when disconnected from computer, system follows repeats loop at this interval. Otherwise, updates occur just after received messages
 #define SERIAL_BAUD 250000
 #define RS485_TIMEOUT 500
 
@@ -43,7 +43,7 @@ uint8_t rovState = STATE_DISCONNECTED;
 uint8_t rovError = ERROR_NONE;
 
 //Timing variables
-unsigned long lastLoopMicros;
+unsigned long lastReceivedCount = 0, lastLoopMicros = 0;
 uint8_t count = 0; //count for slow loop
 uint8_t blinkCount = 0; //count LED blink state
 //Modbus variables
@@ -149,6 +149,7 @@ void readIMU() {
   mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
 }
 void fastLoop() { //runs 100 times a second
+  //digitalWrite(12, HIGH);
   //Write to thrusters the 6 16-bit #s
   thruster1.set(modbusRegisters[0]);
   thruster2.set(modbusRegisters[1]);
@@ -186,6 +187,7 @@ void fastLoop() { //runs 100 times a second
   //Place things in array
 
   //Report Errors
+  //digitalWrite(12, LOW);
 }
 void slowLoop() { //runs 10 times / second
   //set relays, headlights
@@ -213,25 +215,25 @@ void slowLoop() { //runs 10 times / second
   modbusRegisters[24] = thruster5.rpm();
   modbusRegisters[25] = thruster6.rpm();
 
-  if(!thruster1.isAlive() || !thruster2.isAlive() || !thruster3.isAlive() || !thruster4.isAlive() || !thruster5.isAlive() || !thruster6.isAlive()) {
+  if (!thruster1.isAlive() || !thruster2.isAlive() || !thruster3.isAlive() || !thruster4.isAlive() || !thruster5.isAlive() || !thruster6.isAlive()) {
     rovError = ERROR_ESC;
   }
-  if(!thruster1.isAlive()) {
+  if (!thruster1.isAlive()) {
     modbusRegisters[14] = 0;
   }
-  if(!thruster2.isAlive()) {
+  if (!thruster2.isAlive()) {
     modbusRegisters[15] = 0;
   }
-  if(!thruster3.isAlive()) {
+  if (!thruster3.isAlive()) {
     modbusRegisters[16] = 0;
   }
-  if(!thruster4.isAlive()) {
+  if (!thruster4.isAlive()) {
     modbusRegisters[17] = 0;
   }
-  if(!thruster5.isAlive()) {
+  if (!thruster5.isAlive()) {
     modbusRegisters[18] = 0;
   }
-  if(!thruster6.isAlive()) {
+  if (!thruster6.isAlive()) {
     modbusRegisters[19] = 0;
   }
 
@@ -251,24 +253,6 @@ void slowLoop() { //runs 10 times / second
 
   //update ROV status/error registers
   modbusRegisters[27] = rovError;
-
-  //state to disconnected if no comms have occurred during timeout period
-  if (rs485.getTimeOutState()) {
-    rovState = STATE_DISCONNECTED;
-    //if motors are in a running state, stop them on lost connection
-    modbusRegisters[0] = 0;
-    modbusRegisters[1] = 0;
-    modbusRegisters[2] = 0;
-    modbusRegisters[3] = 0;
-    modbusRegisters[4] = 0;
-    modbusRegisters[5] = 0;
-    modbusRegisters[6] = 0;
-    modbusRegisters[7] = 0;
-    modbusRegisters[13] = 0;
-    modbusRegisters[14] = 0;
-  } else {
-    rovState = STATE_CONNECTED;
-  }
 }
 
 void initializePins() {
@@ -327,12 +311,33 @@ void setup()
 #endif
     rovError = ERROR_IMU;
   }
+  //pinMode(12, OUTPUT);
+  //digitalWrite(12, LOW);
 }
 ///////////////////////////////////////////////////////////////////////////////loop
 void loop()
 {
-  if (micros() - lastLoopMicros > 10000) {
-    //every 10000 microseconds, or every 10 milliseconds, or 100 times a second
+  //state to disconnected if no comms have occurred during timeout period
+  if (rs485.getTimeOutState()) {
+    rovState = STATE_DISCONNECTED;
+    //if motors are in a running state, stop them on lost connection
+    modbusRegisters[0] = 0;
+    modbusRegisters[1] = 0;
+    modbusRegisters[2] = 0;
+    modbusRegisters[3] = 0;
+    modbusRegisters[4] = 0;
+    modbusRegisters[5] = 0;
+    modbusRegisters[6] = 0;
+    modbusRegisters[7] = 0;
+    modbusRegisters[13] = 0;
+    modbusRegisters[14] = 0;
+    lastReceivedCount = 0;
+  } else {
+    rovState = STATE_CONNECTED;
+  }
+  
+  if ((rovState == STATE_DISCONNECTED && micros() - lastLoopMicros > FAST_LOOP_INTERVAL) || (rovState == STATE_CONNECTED && rs485.getInCnt() > lastReceivedCount)) {
+    lastReceivedCount = rs485.getInCnt();
     lastLoopMicros = micros();
     fastLoop();
     count++;
