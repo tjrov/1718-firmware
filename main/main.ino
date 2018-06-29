@@ -37,7 +37,7 @@
 uint8_t rovState = STATE_DISCONNECTED;
 
 //Timing variables
-unsigned long lastReceivedCount = 0, lastLoopMicros = 0;
+unsigned long lastLoopMicros = 0;
 uint8_t count = 0; //count for slow loop
 uint8_t blinkCount = 0; //count LED blink state
 //Modbus variables
@@ -110,6 +110,7 @@ void readIMU() {
   mpu.dmpGetGravity(&gravity, &q);
   mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
 }
+
 void fastLoop() { //runs 100 times a second
   //digitalWrite(12, HIGH);
   //Write to thrusters the 6 16-bit #s
@@ -147,7 +148,7 @@ void slowLoop() { //runs 10 times / second
   digitalWrite(LED_CTRL, modbusRegisters[13] & (1 << 2));
 
   //AnalogRead voltage sensor
-  modbusRegisters[VOLTMETER_REGISTER] = analogRead(VOLT_MONITOR);
+  modbusRegisters[VOLTMETER_REGISTER] = map(analogRead(VOLT_MONITOR), 0, 1023, 0, 65535);
   
   //get thruster rpms and temperatures. .update() puts these values in the objects where they can be accessed by methods
   for(int i = 0; i < 6; i++) {
@@ -158,8 +159,8 @@ void slowLoop() { //runs 10 times / second
     modbusRegisters[THRUSTER_TEMP_REGISTERS + i] = (int)map(thrusters[i]->temperature(), 0.0, 100.0, 0.0, 65535.0);
     //set sensors to max value when ESC fails to notify control station
     if(!thrusters[i]->isAlive()) {
-      modbusRegisters[THRUSTER_RPM_REGISTERS + i] = 65535;
-      modbusRegisters[THRUSTER_TEMP_REGISTERS + i] = 65535;
+      modbusRegisters[THRUSTER_RPM_REGISTERS + i] = 0;
+      modbusRegisters[THRUSTER_TEMP_REGISTERS + i] = 0;
     }
   }
 
@@ -259,13 +260,11 @@ void loop()
     modbusRegisters[7] = 0;
     modbusRegisters[13] = 0;
     modbusRegisters[14] = 0;
-    lastReceivedCount = 0;
   } else {
     rovState = STATE_CONNECTED;
   }
   
-  if ((rovState == STATE_DISCONNECTED && micros() - lastLoopMicros > FAST_LOOP_INTERVAL) || (rovState == STATE_CONNECTED && rs485.getInCnt() > lastReceivedCount)) {
-    lastReceivedCount = rs485.getInCnt();
+  if (micros() - lastLoopMicros > FAST_LOOP_INTERVAL) {
     lastLoopMicros = micros();
     fastLoop();
     count++;
