@@ -18,6 +18,7 @@
 //Look at example code included with libraries for how to use APIs
 ///////////////////////////////////////////////////////////////////////////////references
 #include "pindefs.h" //use quotes since file is in same directory
+#include "registers.h"
 #include <Wire.h> //Arduino I2C Library used by all libs below
 //for orientation sensor using MPU-6050 chip over i2c bus
 #include "I2Cdev.h"
@@ -34,13 +35,6 @@
 #define STATE_DISCONNECTED 0b00000001 //no communication to surface or a communication error (pulse status LED once in a while)
 #define STATE_CONNECTED 0b10101010 //communication works, and the user has armed the ROV so it can be driven around (fast flash status LED)
 uint8_t rovState = STATE_DISCONNECTED;
-//ROV errors for Status & Control Register
-#define ERROR_NONE 0
-#define ERROR_IMU 1
-#define ERROR_DEPTH 2
-#define ERROR_ESC 3
-//others as needed
-uint8_t rovError = ERROR_NONE;
 
 //Timing variables
 unsigned long lastReceivedCount = 0, lastLoopMicros = 0;
@@ -58,57 +52,25 @@ uint8_t mpuIntStatus;
 Quaternion q;
 VectorFloat gravity;
 float ypr[3];
-///////////////////////////////////////////////////////////////////////////////modbusRegister explain
-/*Modbus Register contents (add more as needed, these are the bare minimum to control robot functions
-  The library requires an array of UNsigned 16-bit integers, but we can use them as needed
-  The purpose of each element of the array is listed by index here:
-  //=============Fast loop data (High priority) =================
-  0. Thruster Speed #1 (signed 16-bit integers. Negative is reverse, positive is forward)
-  1. Thruster Speed #2 (Can be sent directly to ESCs over i2c bus)
-  2. Thruster Speed #3
-  3. Thruster Speed #4
-  4. Thruster Speed #5
-  5. Thruster Speed #6
-  6. Manipulator Speeds #1, #2 (8-bit signed integer. High byte controls one motor,
-                              low byte controls other motor)
-  7. Manipulator Speeds #3, #4 (Negative is reverse, positive is forward, abs value is speed
-                             see pindefs.h for guidelines controlling manipulators)
-  8. Voltage @ ROV (see pindefs.h for analog pin to use)
-  9. Yaw (these are floating points ranging -180 <-> 180 degrees. We don't need more than one decimal
-        place precision)
-  10. Pitch
-  11. Roll
-  12. Depth Reading (Use conversion methods in sensor library to get mbars and send that up for conversion to depth based on weather conditions)
-  //==============Slow loop data (Low priority; you don't have to check these unless you want to)================
-  13. Booleans for the two relay control pins' states (RLY1 is buzzer), headlights state (use each bit as a boolean)
-  14. Thruster RPM #1
-  15.Thruster RPM #2
-  16.Thruster RPM #3
-  17.Thruster RPM #4
-  18.Thruster RPM #5
-  19.Thruster RPM #6
-  20. Thruster Temp #1
-  21.Thruster Temp #2
-  22.Thruster Temp #3
-  23.Thruster Temp #4
-  24.Thruster Temp #5
-  25.Thruster Temp #6
-  26.Water temp (From depth sensor, which is in contact w/ water)
-  27.ROV Status: holds error codes
-  28.Modbus Status Register. High byte holds getLastError(), Low byte holds getErrCnt().
-*/
+
 ///////////////////////////////////////////////////////////////////////////////Object instantiations
 //slave address 1, use Arduino serial port, TX_EN pin is defined in pindefs.h file
 #define MPU6050_ADDR 0x68
 
 Modbus rs485(1, 0, TX_EN);
 
-Arduino_I2C_ESC thruster1(uint8_t(0x31), uint8_t(6));
-Arduino_I2C_ESC thruster2(uint8_t(0x2B), uint8_t(6));
+
+Arduino_I2C_ESC *thrusters[6];
+
+/*  
+ *   Arduino_I2C_ESC(uint8_t(0x31), uint8_t(6)), 
+  Arduino_I2C_ESC(uint8_t(0x31), uint8_t(6)) 
+};
+/*Arduino_I2C_ESC thruster2(uint8_t(0x2B), uint8_t(6));
 Arduino_I2C_ESC thruster3(uint8_t(0x2C), uint8_t(6));
 Arduino_I2C_ESC thruster4(uint8_t(0x2D), uint8_t(6));
 Arduino_I2C_ESC thruster5(uint8_t(0x2E), uint8_t(6));
-Arduino_I2C_ESC thruster6(uint8_t(0x2F), uint8_t(6));
+Arduino_I2C_ESC thruster6(uint8_t(0x2F), uint8_t(6));*/
 
 MPU6050 mpu(MPU6050_ADDR); //the IMU @ 0x68
 ///////////////////////////////////////////////////////////////////////////////Function Declarations
@@ -117,13 +79,13 @@ MPU6050 mpu(MPU6050_ADDR); //the IMU @ 0x68
 //negative values go reverse, positive forwards
 //other two params are the pins to use (use pindefs.h constants please)
 /*******************************************************************************/
-void setManipulator(int8_t val, byte dir1, byte dir2) {
+void setManipulator(int val, byte dir1, byte dir2) {
   if (val > 0) {
-    analogWrite(dir1, (val * 2));
+    analogWrite(dir1, val);
     digitalWrite(dir2, LOW);
   }
   else if (val < 0) {
-    analogWrite(dir1, (257 + (val * 2)));
+    analogWrite(dir1, 256 + val);
     digitalWrite(dir2, HIGH);
   } else {
     digitalWrite(dir1, LOW);
@@ -151,32 +113,16 @@ void readIMU() {
 void fastLoop() { //runs 100 times a second
   //digitalWrite(12, HIGH);
   //Write to thrusters the 6 16-bit #s
-  thruster1.set(modbusRegisters[0]);
-  thruster2.set(modbusRegisters[1]);
-  thruster3.set(modbusRegisters[2]);
-  thruster4.set(modbusRegisters[3]);
-  thruster5.set(modbusRegisters[4]);
-  thruster6.set(modbusRegisters[5]);
-  //converting to uint8_ts
-  manipRegisters[0] = (uint8_t)((modbusRegisters[6] & 0xFF00) >> 8);
-  manipRegisters[1] = (uint8_t)(modbusRegisters[6] & 0x00FF);
-  manipRegisters[2] = (uint8_t)((modbusRegisters[7] & 0xFF00) >> 8);
-  manipRegisters[3] = (uint8_t)(modbusRegisters[7] & 0x00FF);
-  // Set 4 manipulators motor speeds and direction
-  setManipulator(manipRegisters[0], MOT1_DIR1, MOT1_DIR2);
-  setManipulator(manipRegisters[1], MOT2_DIR1, MOT2_DIR2);
-  setManipulator(manipRegisters[2], MOT3_DIR1, MOT3_DIR2);
-  setManipulator(manipRegisters[3], MOT4_DIR1, MOT4_DIR2);
-
-  //AnalogRead voltage sensor
-  modbusRegisters[8] = analogRead(VOLT_MONITOR);
+  for(int i = 0; i < 6; i++) {
+    thrusters[i].set((int16_t)modbusRegisters[THRUSTER_SPEED_REGISTERS]);
+  }
 
   readIMU();
   //ypr is now a float array with RADIANS yaw, pitch, and roll in indices 0, 1, 2 respectively
   //each value ranges between positive and negative pi
-  modbusRegisters[9] = map(ypr[0], -PI, PI, 0, 65535);
-  modbusRegisters[10] = map(ypr[1], -PI, PI, 0, 65535);
-  modbusRegisters[11] = map(ypr[2], -PI, PI, 0, 65535);
+  for(int i = 0; i < 3; i++) {
+    modbusRegisters[AVIONICS_REGISTERS + i] = map(ypr[0], -PI, PI, 0, 65535);
+  }
 
   /*Serial.print(ypr[0]);
     Serial.print('\t');
@@ -190,51 +136,30 @@ void fastLoop() { //runs 100 times a second
   //digitalWrite(12, LOW);
 }
 void slowLoop() { //runs 10 times / second
+  for(int i = 0; i < 4; i++) {
+    setManipulator(map(modbusRegisters[MANIPULATOR_REGISTERS + i], 0, 65535, -256, 255));
+  }
+  
   //set relays, headlights
-  digitalWrite(RLY1_CTRL, modbusRegisters[13] & (1 << 0));
-  digitalWrite(RLY2_CTRL, modbusRegisters[13] & (1 << 1));
+  digitalWrite(RLY1_CTRL, modbusRegisters[RELAY_REGISTER] & (1 << 0));
+  digitalWrite(RLY2_CTRL, modbusRegisters[RELAY_REGISTER] & (1 << 1));
   digitalWrite(LED_CTRL, modbusRegisters[13] & (1 << 2));
 
+  //AnalogRead voltage sensor
+  modbusRegisters[VOLTMETER_REGISTER] = analogRead(VOLT_MONITOR);
+  
   //get thruster rpms and temperatures. .update() puts these values in the objects where they can be accessed by methods
-  thruster1.update();
-  thruster2.update();
-  thruster3.update();
-  thruster4.update();
-  thruster5.update();
-  thruster6.update();
-  modbusRegisters[14] = (int)(thruster1.temperature() * 10);
-  modbusRegisters[15] = (int)(thruster2.temperature() * 10);
-  modbusRegisters[16] = (int)(thruster3.temperature() * 10);
-  modbusRegisters[17] = (int)(thruster4.temperature() * 10);
-  modbusRegisters[18] = (int)(thruster5.temperature() * 10);
-  modbusRegisters[19] = (int)(thruster6.temperature() * 10);
-  modbusRegisters[20] = thruster1.rpm();
-  modbusRegisters[21] = thruster2.rpm();
-  modbusRegisters[22] = thruster3.rpm();
-  modbusRegisters[23] = thruster4.rpm();
-  modbusRegisters[24] = thruster5.rpm();
-  modbusRegisters[25] = thruster6.rpm();
-
-  if (!thruster1.isAlive() || !thruster2.isAlive() || !thruster3.isAlive() || !thruster4.isAlive() || !thruster5.isAlive() || !thruster6.isAlive()) {
-    rovError = ERROR_ESC;
-  }
-  if (!thruster1.isAlive()) {
-    modbusRegisters[14] = 0;
-  }
-  if (!thruster2.isAlive()) {
-    modbusRegisters[15] = 0;
-  }
-  if (!thruster3.isAlive()) {
-    modbusRegisters[16] = 0;
-  }
-  if (!thruster4.isAlive()) {
-    modbusRegisters[17] = 0;
-  }
-  if (!thruster5.isAlive()) {
-    modbusRegisters[18] = 0;
-  }
-  if (!thruster6.isAlive()) {
-    modbusRegisters[19] = 0;
+  for(int i = 0; i < 6; i++) {
+    thrusters[i].update();
+    //range is signed 16bit
+    modbusRegisters[THRUSTER_RPM_REGISTERS + i] = map(thrusters[i].rpm(), -32768, 32767, 0, 65535);
+    //range is decimal 0 to 100
+    modbusRegisters[THRUSTER_TEMP_REGISTERS + i] = (int)map(thrusters[i].temperature, 0.0, 100.0, 0.0, 65535.0);
+    //set sensors to max value when ESC fails to notify control station
+    if(!thrusters[i].isAlive()) {
+      modbusRegisters[THRUSTER_RPM_REGISTERS + i] = 65535;
+      modbusRegisters[THRUSTER_TEMP_REGISTERS + i] = 65535;
+    }
   }
 
   //update status LED
@@ -243,16 +168,13 @@ void slowLoop() { //runs 10 times / second
   if (blinkCount >= 8) blinkCount = 0;
 
   //update modbus status/error registers
-  modbusRegisters[28] = (rs485.getLastError() << 8) | (rs485.getErrCnt() & 0x00FF);
+  modbusRegisters[COMMUNICATION_REGISTER] = (rs485.getLastError() << 8) | (rs485.getErrCnt() & 0x00FF);
   /*From ModbusRtu.h, getLastError() returns the following values:
     ERR_NOT_MASTER = -1,
     ERR_POLLING = -2,
     ERR_BUFF_OVERFLOW = -3,
     ERR_BAD_CRC = -4,
     ERR_EXCEPTION = -5*/
-
-  //update ROV status/error registers
-  modbusRegisters[27] = rovError;
 }
 
 void initializePins() {
@@ -277,6 +199,12 @@ void initializePins() {
 void setup()
 {
   initializePins();
+  thrusters[0] = new Arduino_I2C_ESC((uint8_t)0x31, (uint8_t)6);
+  thrusters[1] = new Arduino_I2C_ESC((uint8_t)0x2B, (uint8_t)6);
+  thrusters[2] = new Arduino_I2C_ESC((uint8_t)0x2C, (uint8_t)6);
+  thrusters[3] = new Arduino_I2C_ESC((uint8_t)0x2D, (uint8_t)6);
+  thrusters[4] = new Arduino_I2C_ESC((uint8_t)0x2E, (uint8_t)6);
+  thrusters[5] = new Arduino_I2C_ESC((uint8_t)0x2F, (uint8_t)6);
   //Transmit-only Serial debugging
 #if SERIAL_DEBUG
   digitalWrite(TX_EN, LOW);
@@ -309,7 +237,6 @@ void setup()
 #if SERIAL_DEBUG
     Serial.println("IMU failed");
 #endif
-    rovError = ERROR_IMU;
   }
   //pinMode(12, OUTPUT);
   //digitalWrite(12, LOW);
