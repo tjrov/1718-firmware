@@ -114,7 +114,7 @@ void fastLoop() { //runs 100 times a second
   //digitalWrite(12, HIGH);
   //Write to thrusters the 6 16-bit #s
   for(int i = 0; i < 6; i++) {
-    thrusters[i].set((int16_t)modbusRegisters[THRUSTER_SPEED_REGISTERS]);
+    thrusters[i]->set((int16_t)modbusRegisters[THRUSTER_SPEED_REGISTERS]);
   }
 
   readIMU();
@@ -136,9 +136,10 @@ void fastLoop() { //runs 100 times a second
   //digitalWrite(12, LOW);
 }
 void slowLoop() { //runs 10 times / second
-  for(int i = 0; i < 4; i++) {
-    setManipulator(map(modbusRegisters[MANIPULATOR_REGISTERS + i], 0, 65535, -256, 255));
-  }
+  setManipulator(map(modbusRegisters[MANIPULATOR_REGISTERS], 0, 65535, -256, 255), MOT1_DIR1, MOT1_DIR2);
+  setManipulator(map(modbusRegisters[MANIPULATOR_REGISTERS + 1], 0, 65535, -256, 255), MOT2_DIR1, MOT2_DIR2);
+  setManipulator(map(modbusRegisters[MANIPULATOR_REGISTERS + 2], 0, 65535, -256, 255), MOT3_DIR1, MOT3_DIR2);
+  setManipulator(map(modbusRegisters[MANIPULATOR_REGISTERS + 3], 0, 65535, -256, 255), MOT4_DIR1, MOT4_DIR2);
   
   //set relays, headlights
   digitalWrite(RLY1_CTRL, modbusRegisters[RELAY_REGISTER] & (1 << 0));
@@ -150,13 +151,13 @@ void slowLoop() { //runs 10 times / second
   
   //get thruster rpms and temperatures. .update() puts these values in the objects where they can be accessed by methods
   for(int i = 0; i < 6; i++) {
-    thrusters[i].update();
+    thrusters[i]->update();
     //range is signed 16bit
-    modbusRegisters[THRUSTER_RPM_REGISTERS + i] = map(thrusters[i].rpm(), -32768, 32767, 0, 65535);
+    modbusRegisters[THRUSTER_RPM_REGISTERS + i] = map(thrusters[i]->rpm(), -32768, 32767, 0, 65535);
     //range is decimal 0 to 100
-    modbusRegisters[THRUSTER_TEMP_REGISTERS + i] = (int)map(thrusters[i].temperature, 0.0, 100.0, 0.0, 65535.0);
+    modbusRegisters[THRUSTER_TEMP_REGISTERS + i] = (int)map(thrusters[i]->temperature(), 0.0, 100.0, 0.0, 65535.0);
     //set sensors to max value when ESC fails to notify control station
-    if(!thrusters[i].isAlive()) {
+    if(!thrusters[i]->isAlive()) {
       modbusRegisters[THRUSTER_RPM_REGISTERS + i] = 65535;
       modbusRegisters[THRUSTER_TEMP_REGISTERS + i] = 65535;
     }
